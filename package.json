@@ -1,0 +1,24 @@
+{
+  "name": "budget-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PWA personnelle de gestion budgétaire. Moteur de calcul partagé, base Supabase testée, mode hors ligne.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspace @budget/core && npm run test --workspace @budget/web && npm run db:test",
+    "db:test": "node supabase/tests/run.mjs",
+    "db:seed": "node --experimental-strip-types supabase/scripts/generer-seed.ts",
+    "build": "npm run build --workspace @budget/web",
+    "dev": "npm run dev --workspace @budget/web"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.7"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,28 @@
+# Dépendances
+node_modules/
+
+# Sorties de build
+dist/
+dev-dist/
+.vercel/
+*.tsbuildinfo
+
+# Secrets — AUCUN fichier d'environnement ne doit être versionné.
+# Seul .env.example, qui ne contient que des valeurs factices, est suivi.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+
+# Outils locaux
+.DS_Store
+*.log
+npm-debug.log*
+.idea/
+.vscode/
+
+# Sauvegardes de base
+*.dump
+*.sql.gz

@@ -1,0 +1,392 @@
+import { useEffect, useState } from 'react';
+import { eur } from '@budget/core/src/money.ts';
+import { periodeDe } from '@budget/core/src/periode.ts';
+import type { Categorie } from '@budget/core/src/types.ts';
+import {
+  activerRecurrent, archiverCategorie, chargerRegles, definirEnveloppe,
+  enregistrerCategorie, enregistrerRegle, supprimerRegle,
+} from '../db/configuration.ts';
+import type { RegleCategorisation, TypeCorrespondance } from '../import/regles.ts';
+import { Carte, Etiquette, Vide } from '../components/ui.tsx';
+import { aujourdhuiISO, montant } from '../lib/format.ts';
+import { useConfiguration } from '../state/useDonnees.ts';
+
+const CRITICITES: (Categorie['criticite'] | 'non_classee')[] = [
+  'essentielle', 'semi_essentielle', 'non_essentielle', 'non_classee',
+];
+
+export function Configurer() {
+  const { config } = useConfiguration();
+  const periode = periodeDe(aujourdhuiISO());
+  const [message, setMessage] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [regles, setRegles] = useState<RegleCategorisation[]>([]);
+  const [section, setSection] = useState<'categories' | 'enveloppes' | 'recurrents' | 'regles'>('categories');
+
+  useEffect(() => { void chargerRegles().then(setRegles); }, []);
+
+  const executer = async (action: () => Promise<string>) => {
+    setErreur(null);
+    setMessage(null);
+    try {
+      setMessage(await action());
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const nomCategorie = (id: string) =>
+    config.categories.find((c) => c.id === id)?.nom ?? 'Catégorie inconnue';
+
+  const totalEnveloppes = config.budgetVariable.reduce((a, l) => a + l.montantPrevu, 0);
+
+  return (
+    <div className="ecran">
+      <div className="filtres">
+        {(['categories', 'enveloppes', 'recurrents', 'regles'] as const).map((s) => (
+          <button
+            key={s}
+            className={`bascule-item${section === s ? ' actif' : ''}`}
+            onClick={() => setSection(s)}
+          >
+            {{ categories: 'Catégories', enveloppes: 'Enveloppes', recurrents: 'Récurrents', regles: 'Règles' }[s]}
+          </button>
+        ))}
+      </div>
+
+      {erreur && <p className="note note-attention">{erreur}</p>}
+      {message && <p className="note">{message}</p>}
+
+      {section === 'categories' && (
+        <>
+          <Carte titre="Catégories">
+            <p className="note">
+              La criticité sert au calcul du fonds d’urgence. Une catégorie{' '}
+              <strong>non classée est exclue du calcul et signalée</strong> — jamais
+              présumée non essentielle.
+            </p>
+          </Carte>
+          {config.categories.map((c) => (
+            <Carte key={c.id}>
+              <div className="scenario-tete">
+                <strong>{c.nom}</strong>
+                <Etiquette>{c.nature}</Etiquette>
+              </div>
+              <select
+                className="champ"
+                value={c.criticite ?? 'non_classee'}
+                onChange={(e) =>
+                  void executer(async () => {
+                    const valeur = e.target.value;
+                    await enregistrerCategorie({
+                      id: c.id,
+                      nom: c.nom,
+                      nature: c.nature,
+                      criticite: valeur === 'non_classee' ? null : (valeur as Categorie['criticite'])!,
+                    });
+                    return `Criticité de « ${c.nom} » enregistrée.`;
+                  })
+                }
+              >
+                {CRITICITES.map((v) => (
+                  <option key={v} value={v ?? 'non_classee'}>
+                    {v === 'non_classee' ? 'Non classée (exclue du calcul)' : v}
+                  </option>
+                ))}
+              </select>
+              {c.nature === 'variable' && (
+                <button
+                  className="bouton"
+                  onClick={() =>
+                    void executer(async () => {
+                      await archiverCategorie(c.id);
+                      return `« ${c.nom} » archivée. Les transactions passées la conservent.`;
+                    })
+                  }
+                >
+                  Archiver
+                </button>
+              )}
+            </Carte>
+          ))}
+          <NouvelleCategorie onEnregistrer={(c) => executer(async () => {
+            await enregistrerCategorie(c);
+            return `Catégorie « ${c.nom} » créée.`;
+          })} />
+        </>
+      )}
+
+      {section === 'enveloppes' && (
+        <>
+          <Carte titre={`Enveloppes — total ${montant(totalEnveloppes)}`}>
+            <p className="note">
+              Une modification s’applique au mois en cours et aux suivants : c’est
+              presque toujours l’intention réelle quand on ajuste un budget récurrent.
+            </p>
+          </Carte>
+          {config.budgetVariable.map((l) => (
+            <Enveloppe
+              key={l.categorieId}
+              nom={nomCategorie(l.categorieId)}
+              valeur={l.montantPrevu}
+              onValider={(v, suivants) =>
+                executer(async () => {
+                  const n = await definirEnveloppe(periode, l.categorieId, v, suivants);
+                  return `${nomCategorie(l.categorieId)} : ${montant(v)} sur ${n} période(s).`;
+                })
+              }
+            />
+          ))}
+        </>
+      )}
+
+      {section === 'recurrents' && (
+        <>
+          <Carte titre="Revenus récurrents">
+            <p className="note">
+              Désactiver un élément le retire des calculs du mois en cours. Rien n’est
+              supprimé : l’historique reste intact.
+            </p>
+            {config.revenus.map((r) => (
+              <Bascule
+                key={r.id}
+                libelle={`${r.nom} — ${montant(r.montant)}`}
+                detail={r.jour === null ? 'Jour de versement inconnu' : `Le ${r.jour}`}
+                onDesactiver={() =>
+                  executer(async () => {
+                    await activerRecurrent('recurring_incomes', r.id, false);
+                    return `${r.nom} désactivé.`;
+                  })
+                }
+              />
+            ))}
+          </Carte>
+
+          <Carte titre="Charges récurrentes">
+            {config.charges.map((c) => (
+              <Bascule
+                key={c.id}
+                libelle={`${c.nom} — ${montant(c.montant)}`}
+                detail={c.fin ? `Dernière échéance ${c.fin}` : c.jour === null ? 'Jour inconnu' : `Le ${c.jour}`}
+                onDesactiver={() =>
+                  executer(async () => {
+                    await activerRecurrent('recurring_expenses', c.id, false);
+                    return `${c.nom} désactivée.`;
+                  })
+                }
+              />
+            ))}
+          </Carte>
+        </>
+      )}
+
+      {section === 'regles' && (
+        <>
+          <Carte titre="Catégorisation automatique">
+            <p className="note">
+              Une règle <strong>propose</strong> une catégorie ; la transaction reste
+              en attente de votre validation. Attention aux motifs trop courts :
+              « TOTAL » attraperait aussi bien TOTALENERGIES que les stations-service.
+            </p>
+          </Carte>
+          {regles.length === 0 && <Vide message="Aucune règle. Ajoutez-en une ci-dessous." />}
+          {regles.map((r) => (
+            <Carte key={r.id}>
+              <div className="scenario-tete">
+                <strong>{r.motif}</strong>
+                <Etiquette ton={r.active ? 'ok' : 'attente'}>
+                  {r.active ? 'Active' : 'Inactive'}
+                </Etiquette>
+              </div>
+              <p className="alerte-detail">
+                {r.typeCorrespondance} → {nomCategorie(r.categorieId)} · priorité {r.priorite}
+                {r.autoValider ? ' · validation automatique' : ''}
+              </p>
+              <div className="bascule">
+                <button
+                  onClick={() =>
+                    void executer(async () => {
+                      await enregistrerRegle({ ...r, active: !r.active });
+                      setRegles(await chargerRegles());
+                      return `Règle « ${r.motif} » ${r.active ? 'désactivée' : 'activée'}.`;
+                    })
+                  }
+                >
+                  {r.active ? 'Désactiver' : 'Activer'}
+                </button>
+                <button
+                  onClick={() =>
+                    void executer(async () => {
+                      await supprimerRegle(r.id);
+                      setRegles(await chargerRegles());
+                      return `Règle « ${r.motif} » supprimée.`;
+                    })
+                  }
+                >
+                  Supprimer
+                </button>
+              </div>
+            </Carte>
+          ))}
+          <NouvelleRegle
+            categories={config.categories}
+            onEnregistrer={(r) =>
+              executer(async () => {
+                await enregistrerRegle(r);
+                setRegles(await chargerRegles());
+                return `Règle « ${r.motif} » créée.`;
+              })
+            }
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function Enveloppe({
+  nom, valeur, onValider,
+}: {
+  nom: string;
+  valeur: number;
+  onValider: (v: number, suivants: boolean) => Promise<void>;
+}) {
+  const [texte, setTexte] = useState(String(valeur / 100));
+  const [suivants, setSuivants] = useState(true);
+  return (
+    <Carte>
+      <div className="scenario-tete">
+        <strong>{nom}</strong>
+        <span>{montant(valeur)}</span>
+      </div>
+      <input
+        className="champ"
+        type="text"
+        inputMode="decimal"
+        value={texte}
+        onChange={(e) => setTexte(e.target.value)}
+      />
+      <label className="puce">
+        <input type="checkbox" checked={suivants} onChange={(e) => setSuivants(e.target.checked)} />{' '}
+        Appliquer aussi aux mois suivants
+      </label>
+      <button
+        className="bouton"
+        onClick={() => {
+          const v = Number(texte.replace(',', '.'));
+          if (Number.isFinite(v) && v >= 0) void onValider(eur(v), suivants);
+        }}
+      >
+        Enregistrer
+      </button>
+    </Carte>
+  );
+}
+
+function Bascule({
+  libelle, detail, onDesactiver,
+}: {
+  libelle: string;
+  detail: string;
+  onDesactiver: () => Promise<void>;
+}) {
+  return (
+    <div className="scenario">
+      <div className="scenario-tete">
+        <span>{libelle}</span>
+        <button className="lien" onClick={() => void onDesactiver()}>Désactiver</button>
+      </div>
+      <p className="alerte-detail">{detail}</p>
+    </div>
+  );
+}
+
+function NouvelleCategorie({
+  onEnregistrer,
+}: {
+  onEnregistrer: (c: {
+    nom: string;
+    nature: 'fixe' | 'variable' | 'provision' | 'epargne';
+    // `undefined` (non classée dans le moteur) est ramené à `null` ici :
+    // en base, une criticité absente est un NULL explicite.
+    criticite: 'essentielle' | 'semi_essentielle' | 'non_essentielle' | null;
+  }) => void;
+}) {
+  const [nom, setNom] = useState('');
+  return (
+    <Carte titre="Nouvelle catégorie">
+      <input className="champ" placeholder="Nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+      <button
+        className="bouton bouton-principal"
+        disabled={nom.trim() === ''}
+        onClick={() => {
+          onEnregistrer({ nom: nom.trim(), nature: 'variable', criticite: null });
+          setNom('');
+        }}
+      >
+        Créer (variable, non classée)
+      </button>
+      <p className="note">
+        Créée non classée : à vous de définir sa criticité, elle ne sera pas devinée.
+      </p>
+    </Carte>
+  );
+}
+
+function NouvelleRegle({
+  categories, onEnregistrer,
+}: {
+  categories: Categorie[];
+  onEnregistrer: (r: Omit<RegleCategorisation, 'id'>) => void;
+}) {
+  const [motif, setMotif] = useState('');
+  const [categorieId, setCategorieId] = useState(categories[0]?.id ?? '');
+  const [type, setType] = useState<TypeCorrespondance>('contains');
+  const court = motif.trim().length > 0 && motif.trim().length < 3;
+
+  return (
+    <Carte titre="Nouvelle règle">
+      <input
+        className="champ"
+        placeholder="Motif, ex. TOTALENERGIES"
+        value={motif}
+        onChange={(e) => setMotif(e.target.value)}
+      />
+      {court && (
+        <p className="note note-attention">
+          Motif très court : il risque d’attraper des libellés sans rapport.
+        </p>
+      )}
+      <select className="champ" value={type} onChange={(e) => setType(e.target.value as TypeCorrespondance)}>
+        <option value="contains">contient</option>
+        <option value="starts_with">commence par</option>
+        <option value="exact">exactement</option>
+        <option value="regex">expression régulière</option>
+      </select>
+      <select className="champ" value={categorieId} onChange={(e) => setCategorieId(e.target.value)}>
+        {categories.map((c) => (
+          <option key={c.id} value={c.id}>{c.nom}</option>
+        ))}
+      </select>
+      <button
+        className="bouton bouton-principal"
+        disabled={motif.trim().length < 2 || categorieId === ''}
+        onClick={() => {
+          onEnregistrer({
+            motif: motif.trim(),
+            typeCorrespondance: type,
+            categorieId,
+            priorite: 100,
+            // Jamais de validation automatique par défaut : un libellé
+            // bancaire est trop instable pour engager les comptes seul.
+            autoValider: false,
+            active: true,
+          });
+          setMotif('');
+        }}
+      >
+        Créer la règle
+      </button>
+    </Carte>
+  );
+}

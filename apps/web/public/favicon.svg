@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Budget">
+  <rect width="64" height="64" rx="14" fill="#0f1115"/>
+  <rect x="13" y="36" width="7" height="15" rx="2" fill="#2e543f"/>
+  <rect x="24" y="29" width="7" height="22" rx="2" fill="#2e543f"/>
+  <rect x="35" y="22" width="7" height="29" rx="2" fill="#4ade80"/>
+  <rect x="46" y="15" width="7" height="36" rx="2" fill="#4ade80"/>
+</svg>
