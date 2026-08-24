@@ -1,7 +1,7 @@
-import { entier, lireVue, verifier } from './_assistance.ts';
+import { entier, lireVue, router, verifier } from './_assistance';
 
 
-export default async function handler(request: Request): Promise<Response> {
+export default router(async function handler(request: Request): Promise<Response> {
   const ctx = verifier(request);
   if (ctx instanceof Response) return ctx;
 
@@ -20,4 +20,4 @@ export default async function handler(request: Request): Promise<Response> {
   if (statut === 'pending' || statut === 'validated') parametres['status'] = `eq.${statut}`;
 
   return lireVue(ctx, 'v_ai_transactions', parametres);
-}
+});

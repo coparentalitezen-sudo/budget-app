@@ -1,7 +1,7 @@
-import { entier, lireVue, verifier } from './_assistance.ts';
+import { entier, lireVue, router, verifier } from './_assistance';
 
 
-export default async function handler(request: Request): Promise<Response> {
+export default router(async function handler(request: Request): Promise<Response> {
   const ctx = verifier(request);
   if (ctx instanceof Response) return ctx;
 
@@ -14,4 +14,4 @@ export default async function handler(request: Request): Promise<Response> {
   if (annee && /^\d{4}$/.test(annee)) parametres['year'] = `eq.${annee}`;
 
   return lireVue(ctx, 'v_ai_budget_summary', parametres);
-}
+});

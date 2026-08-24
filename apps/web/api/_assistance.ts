@@ -48,6 +48,25 @@ export function erreur(message: string, statut: number): Response {
   return reponse({ erreur: message }, statut);
 }
 
+/**
+ * Enveloppe un handler de route : toute exception qui s'en échappe devient
+ * une réponse JSON générique. Le détail (message, pile) part dans les
+ * journaux serveur, jamais dans la réponse — une trace de PostgREST ou un
+ * chemin de fichier ne doivent pas fuiter côté client.
+ */
+export function router(
+  gestionnaire: (request: Request) => Promise<Response>,
+): (request: Request) => Promise<Response> {
+  return async (request: Request) => {
+    try {
+      return await gestionnaire(request);
+    } catch (cause) {
+      console.error('assistance: exception non interceptée', cause);
+      return erreur('Erreur interne.', 500);
+    }
+  };
+}
+
 interface Contexte {
   urlSupabase: string;
   cleService: string;
