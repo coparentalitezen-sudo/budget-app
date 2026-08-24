@@ -3,6 +3,8 @@ export * from './periode.ts';
 export * from './types.ts';
 export * from './budget.ts';
 export * from './epargne.ts';
+export * from './revenus.ts';
+export * from './texte.ts';
 export * from './credits.ts';
 export * from './provisions.ts';
 export * from './fondUrgence.ts';

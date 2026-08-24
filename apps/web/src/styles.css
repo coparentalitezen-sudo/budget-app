@@ -222,3 +222,42 @@ body {
   border: 1px solid #5c4a1f; border-radius: var(--rayon);
   font-size: 15px; font-weight: 600; text-align: left;
 }
+
+/* --- Indicateurs clés --------------------------------------------- */
+.kpi-grille { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.kpi {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface); border: 1px solid var(--bordure);
+  border-radius: var(--rayon); padding: 12px 10px;
+}
+.kpi-libelle { font-size: 11px; color: var(--texte-doux); text-transform: uppercase; letter-spacing: 0.04em; }
+.kpi-valeur { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.kpi-appui { font-size: 11px; color: var(--texte-doux); }
+.kpi-revenus { border-left: 3px solid var(--accent); }
+.kpi-depenses { border-left: 3px solid #38bdf8; }
+.kpi-epargne { border-left: 3px solid #a78bfa; }
+
+/* --- Anneau -------------------------------------------------------- */
+.anneau-bloc { display: flex; flex-direction: column; gap: 12px; }
+.anneau-graphe { display: flex; justify-content: center; }
+.anneau-graphe svg { width: 168px; height: 168px; }
+.anneau-fond { fill: none; stroke: var(--surface-haute); stroke-width: 16; }
+.anneau-segment { fill: none; stroke-width: 16; stroke-linecap: butt; }
+.anneau-total {
+  text-anchor: middle; fill: var(--texte); font-size: 15px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.anneau-libelle { text-anchor: middle; fill: var(--texte-doux); font-size: 10px; }
+
+.anneau-legende { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.anneau-legende li {
+  display: grid; grid-template-columns: 10px 1fr auto auto;
+  align-items: center; gap: 8px; font-size: 13px;
+}
+.pastille { width: 10px; height: 10px; border-radius: 3px; }
+.legende-nom { color: var(--texte); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legende-part { color: var(--texte-doux); font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
+.legende-montant { font-variant-numeric: tabular-nums; min-width: 74px; text-align: right; }
+
+.top-ligne { padding: 8px 0; border-bottom: 1px solid var(--bordure); }
+.top-ligne:last-child { border-bottom: none; }

@@ -10,6 +10,7 @@ import {
   type DateISO,
   type Periode,
 } from './periode.ts';
+import { repartitionRevenus, type RepartitionRevenus } from './revenus.ts';
 import type {
   Categorie,
   ChargeRecurrente,
@@ -241,6 +242,8 @@ export interface SyntheseMensuelle {
   /** Progression par rapport à l'OBJECTIF théorique (0 -> 1). */
   progressionEpargne: number;
   categories: LigneCategorie[];
+  /** Répartition des revenus par source, pour l'affichage en anneau. */
+  revenus: RepartitionRevenus;
 }
 
 export function synthetiserMois(
@@ -280,6 +283,7 @@ export function synthetiserMois(
     progressionEpargne:
       epargne.objectifEpargne > 0 ? realise.epargneNette / epargne.objectifEpargne : 1,
     categories,
+    revenus: repartitionRevenus(config, transactions, p),
   };
 }
 
