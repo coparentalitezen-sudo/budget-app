@@ -41,6 +41,8 @@ export default function App() {
 function Application() {
   const [onglet, setOnglet] = useState<Onglet>('accueil');
   const [saisieOuverte, setSaisieOuverte] = useState(false);
+  // Permet d'ouvrir directement la liste « À renseigner » depuis l'accueil.
+  const [vueTransactions, setVueTransactions] = useState<'a_renseigner' | undefined>(undefined);
   const [enLigne, setEnLigne] = useState(navigator.onLine);
   const enAttente = useOutboxCount();
   const { userId, pret } = useSession();
@@ -79,8 +81,15 @@ function Application() {
       </header>
 
       <main className="contenu">
-        {onglet === 'accueil' && <Dashboard />}
-        {onglet === 'transactions' && <Transactions />}
+        {onglet === 'accueil' && (
+          <Dashboard
+            onOuvrirARenseigner={() => {
+              setVueTransactions('a_renseigner');
+              setOnglet('transactions');
+            }}
+          />
+        )}
+        {onglet === 'transactions' && <Transactions vueInitiale={vueTransactions} />}
         {onglet === 'budget' && <Budget />}
         {onglet === 'epargne' && <Epargne />}
         {onglet === 'credits' && <Credits />}
@@ -105,7 +114,10 @@ function Application() {
           <button
             key={o.cle}
             className={onglet === o.cle ? 'actif' : ''}
-            onClick={() => setOnglet(o.cle)}
+            onClick={() => {
+              if (o.cle !== 'transactions') setVueTransactions(undefined);
+              setOnglet(o.cle);
+            }}
           >
             {o.libelle}
           </button>

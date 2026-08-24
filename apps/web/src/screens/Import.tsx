@@ -83,7 +83,9 @@ export function Import() {
     setResultat(
       `${apercu.candidates.length} transaction(s) importée(s) en attente de validation, ` +
         `dont ${apercu.categorisees} catégorisée(s) automatiquement et ` +
-        `${apercu.suspicions.length} doublon(s) possible(s) signalé(s).`,
+        `${apercu.suspicions.length} doublon(s) possible(s) signalé(s). ` +
+        `${apercu.nonCategorisees} opération(s) sont à renseigner : ` +
+        `retrouvez-les sur l’accueil ou dans Opérations.`,
     );
     setApercu(null);
   };

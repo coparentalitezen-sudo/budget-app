@@ -6,8 +6,9 @@ import { periodeDe } from '@budget/core/src/periode.ts';
 import { Carte, Jauge, Ligne, Valeur } from '../components/ui.tsx';
 import { aujourdhuiISO, moisLong, montant } from '../lib/format.ts';
 import { useConfiguration, useTransactions } from '../state/useDonnees.ts';
+import { estARenseigner } from './Transactions.tsx';
 
-export function Dashboard() {
+export function Dashboard({ onOuvrirARenseigner }: { onOuvrirARenseigner?: () => void } = {}) {
   const { config } = useConfiguration();
   const transactions = useTransactions();
   const aujourdhui = aujourdhuiISO();
@@ -23,9 +24,17 @@ export function Dashboard() {
 
   const alertesFortes = alertes.filter((a) => a.niveau !== 'info');
 
+  const aRenseigner = transactions.filter(estARenseigner).length;
+
   return (
     <div className="ecran">
       <p className="periode">{moisLong(periode)}</p>
+
+      {aRenseigner > 0 && (
+        <button className="bandeau-alerte" onClick={onOuvrirARenseigner}>
+          ⚠️ {aRenseigner} opération(s) à renseigner
+        </button>
+      )}
 
       <section className="heros">
         <p className="heros-question">Combien puis-je encore dépenser ?</p>

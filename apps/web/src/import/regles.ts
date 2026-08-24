@@ -157,3 +157,38 @@ export const REGLES_INITIALES: { motif: string; categorie: string; commentaire?:
   { motif: 'TOTAL ACCESS', categorie: 'Essence / voiture' },
   { motif: 'PHARMACIE', categorie: 'Santé' },
 ];
+
+/**
+ * Propose un motif de règle à partir d'un libellé bancaire brut.
+ *
+ * Un libellé de relevé ressemble à « PAIEMENT CB 04/09 CARREFOUR MARKET 1234 ».
+ * L'utiliser tel quel comme motif `contains` produirait une règle qui ne
+ * correspondrait plus jamais : la date et le numéro de carte changent à chaque
+ * opération. On retire donc les parties volatiles et on garde les mots
+ * significatifs.
+ *
+ * Le résultat reste MODIFIABLE par l'utilisateur avant enregistrement : c'est
+ * une proposition, pas une décision.
+ */
+const MOTS_OUTILS = new Set([
+  'PAIEMENT', 'PAIMENT', 'CB', 'CARTE', 'ACHAT', 'PRLV', 'PRELEVEMENT',
+  'VIREMENT', 'VIR', 'FACTURE', 'DU', 'DE', 'LE', 'LA', 'DEBIT', 'CREDIT',
+  'SEPA', 'RETRAIT', 'DAB', 'ECH', 'REF',
+]);
+
+export function motifDepuisLibelle(libelle: string): string {
+  const mots = normaliser(libelle)
+    .split(/[^A-Z0-9]+/)
+    .filter((mot) => {
+      if (mot.length < 3) return false;
+      if (MOTS_OUTILS.has(mot)) return false;
+      // Suites de chiffres : dates, numéros de carte, références.
+      if (/^\d+$/.test(mot)) return false;
+      return true;
+    });
+
+  // Deux mots suffisent presque toujours à identifier une enseigne
+  // (« CARREFOUR MARKET »), et restent assez larges pour capter ses variantes.
+  const retenus = mots.slice(0, 2).join(' ');
+  return retenus !== '' ? retenus : normaliser(libelle).slice(0, 30);
+}

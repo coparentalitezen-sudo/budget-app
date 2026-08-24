@@ -3,6 +3,7 @@ import { periodeDe } from '@budget/core/src/periode.ts';
 import type { StatutTransaction, TypeTransaction } from '@budget/core/src/types.ts';
 import { empreinte } from '../db/doublons.ts';
 import { Carte, Etiquette, Vide } from '../components/ui.tsx';
+import { OperationARenseigner } from '../components/ARenseigner.tsx';
 import { dateCourte, montant } from '../lib/format.ts';
 import { useConfiguration, useTransactions } from '../state/useDonnees.ts';
 
@@ -10,9 +11,15 @@ const TYPES: (TypeTransaction | 'tous')[] = [
   'tous', 'depense', 'revenu', 'facture', 'remboursement', 'epargne', 'transfert',
 ];
 
-export function Transactions() {
+/** Une opération importée sans catégorie fiable, en attente de décision. */
+export const estARenseigner = (t: { categorieId: string | null; statut: string }) =>
+  t.categorieId === null && t.statut === 'pending';
+
+export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } = {}) {
   const { config } = useConfiguration();
   const transactions = useTransactions();
+  const [vue, setVue] = useState<'toutes' | 'a_renseigner'>(vueInitiale ?? 'toutes');
+  const [reportees, setReportees] = useState<string[]>([]);
   const [recherche, setRecherche] = useState('');
   const [type, setType] = useState<TypeTransaction | 'tous'>('tous');
   const [statut, setStatut] = useState<StatutTransaction | 'tous'>('tous');
@@ -57,8 +64,52 @@ export function Transactions() {
     return [...groupes.entries()];
   }, [filtrees]);
 
+  const aRenseigner = transactions.filter(estARenseigner);
+  const aTraiter = aRenseigner.filter((t) => !reportees.includes(t.id));
+
+  if (vue === 'a_renseigner') {
+    return (
+      <div className="ecran">
+        <Carte titre={`${aRenseigner.length} opération(s) à renseigner`}>
+          <p className="note">
+            Ces opérations ont été importées sans catégorie fiable. Classez-les
+            pour qu’elles entrent dans votre budget. « Plus tard » les laisse ici.
+          </p>
+          <button className="bouton" onClick={() => setVue('toutes')}>
+            Revenir à toutes les opérations
+          </button>
+        </Carte>
+
+        {aTraiter.length === 0 && (
+          <Vide
+            message={
+              aRenseigner.length === 0
+                ? 'Rien à renseigner. Toutes vos opérations sont classées.'
+                : 'Toutes les opérations restantes ont été reportées à plus tard.'
+            }
+          />
+        )}
+
+        {aTraiter.map((t) => (
+          <OperationARenseigner
+            key={t.id}
+            transaction={t}
+            categories={config.categories}
+            onTraitee={() => setReportees((r) => [...r, t.id])}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="ecran">
+      {aRenseigner.length > 0 && (
+        <button className="bandeau-alerte" onClick={() => setVue('a_renseigner')}>
+          ⚠️ {aRenseigner.length} opération(s) à renseigner
+        </button>
+      )}
+
       <input
         className="champ"
         type="search"

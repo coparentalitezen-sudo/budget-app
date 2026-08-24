@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   categoriser, categoriserLot, normaliser, regleCorrespond,
-  REGLES_INITIALES, type RegleCategorisation,
+  motifDepuisLibelle, REGLES_INITIALES, type RegleCategorisation,
 } from '../src/import/regles.ts';
 import type { Transaction } from '@budget/core/src/types.ts';
 
@@ -128,5 +128,34 @@ describe('Règles initiales', () => {
     assert.equal(elec.categorie, 'Électricité');
     assert.equal(essence.categorie, 'Essence / voiture');
     assert.ok(!REGLES_INITIALES.some((r) => normaliser(r.motif) === 'TOTAL'));
+  });
+});
+
+describe('Motif proposé à partir d’un libellé brut', () => {
+  test('les parties volatiles sont retirées', () => {
+    assert.equal(motifDepuisLibelle('PAIEMENT CB 04/09 CARREFOUR MARKET 1234'), 'CARREFOUR MARKET');
+    assert.equal(motifDepuisLibelle('PRLV SEPA FREE MOBILE'), 'FREE MOBILE');
+    assert.equal(motifDepuisLibelle('CB LIDL'), 'LIDL');
+  });
+
+  test('le motif proposé correspond bien au libellé d’origine', () => {
+    const libelle = 'PAIEMENT CB 04/09 CARREFOUR MARKET 1234';
+    const motif = motifDepuisLibelle(libelle);
+    assert.ok(
+      regleCorrespond(
+        { id: 'x', motif, typeCorrespondance: 'contains', categorieId: 'c', priorite: 100, autoValider: false, active: true },
+        libelle,
+      ),
+    );
+  });
+
+  test('il capte aussi les variantes du même commerçant', () => {
+    const motif = motifDepuisLibelle('PAIEMENT CB 04/09 CARREFOUR MARKET 1234');
+    const regle = { id: 'x', motif, typeCorrespondance: 'contains' as const, categorieId: 'c', priorite: 100, autoValider: false, active: true };
+    assert.ok(regleCorrespond(regle, 'CB 17/10 CARREFOUR MARKET LYON 9876'));
+  });
+
+  test('un libellé sans mot exploitable ne produit pas un motif vide', () => {
+    assert.notEqual(motifDepuisLibelle('CB 04/09 1234'), '');
   });
 });
