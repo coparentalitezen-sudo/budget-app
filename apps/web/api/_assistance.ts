@@ -12,7 +12,6 @@
  *  4. Seules les vues `v_ai_*` sont accessibles : jamais les tables.
  */
 
-export const config = { runtime: 'edge' };
 
 const VUES_AUTORISEES = [
   'v_ai_transactions',
