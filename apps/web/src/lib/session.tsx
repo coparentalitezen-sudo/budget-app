@@ -4,16 +4,28 @@ import { obtenirSupabase, supabaseConfigure } from './supabase.ts';
 /**
  * Session Supabase.
  *
- * Authentification par lien magique : pas de mot de passe à stocker, à
- * saisir sur mobile, ni à réinitialiser. La session persiste, l'application
- * n'exige donc pas de reconnexion à chaque ouverture — ce qui compte pour
- * une PWA lancée plusieurs fois par jour.
+ * Connexion par code OTP à 6 chiffres, saisi directement dans la PWA.
+ * Le lien magique envoyé dans le même courriel ouvre Safari et y crée sa
+ * propre session : rien ne garantit qu'elle rejoigne le stockage de la PWA
+ * installée (deux origines de stockage distinctes sur iOS). Le code, lui,
+ * est vérifié via `verifyOtp()` dans l'application elle-même : la session
+ * est donc créée directement là où `persistSession` la conservera.
+ *
+ * `persistSession: true` + `autoRefreshToken: true` (voir `supabase.ts`)
+ * font le reste : aux ouvertures suivantes, `getSession()` retrouve la
+ * session sans redemander l'e-mail tant qu'elle est valide.
  */
+interface ResultatAuth {
+  ok: boolean;
+  message: string;
+}
+
 interface EtatSession {
   userId: string | null;
   email: string | null;
   pret: boolean;
-  connecter: (email: string) => Promise<string>;
+  envoyerCode: (email: string) => Promise<ResultatAuth>;
+  verifierCode: (email: string, code: string) => Promise<ResultatAuth>;
   deconnecter: () => Promise<void>;
 }
 
@@ -32,6 +44,8 @@ export function FournisseurSession({ children }: { children: ReactNode }) {
         if (!annule) setPret(true);
         return;
       }
+      // Session déjà persistée (ouverture précédente) : retrouvée sans
+      // aucune interaction, avant même d'afficher un écran de connexion.
       const { data } = await supabase.auth.getSession();
       if (!annule) {
         setUserId(data.session?.user.id ?? null);
@@ -46,14 +60,25 @@ export function FournisseurSession({ children }: { children: ReactNode }) {
     return () => { annule = true; };
   }, []);
 
-  const connecter = async (adresse: string): Promise<string> => {
+  const envoyerCode = async (adresse: string): Promise<ResultatAuth> => {
     const supabase = await obtenirSupabase();
-    if (!supabase) return 'Supabase n’est pas configuré.';
-    const { error } = await supabase.auth.signInWithOtp({
-      email: adresse,
-      options: { emailRedirectTo: window.location.origin },
-    });
-    return error ? error.message : 'Lien de connexion envoyé. Vérifiez votre messagerie.';
+    if (!supabase) return { ok: false, message: 'Supabase n’est pas configuré.' };
+    const { error } = await supabase.auth.signInWithOtp({ email: adresse });
+    if (error) return { ok: false, message: error.message };
+    return { ok: true, message: `Code envoyé à ${adresse}. Vérifiez votre messagerie.` };
+  };
+
+  /**
+   * Vérifie le code à 6 chiffres et crée la session DANS la PWA — la
+   * requête part directement de l'application, jamais du navigateur ouvert
+   * par un lien externe.
+   */
+  const verifierCode = async (adresse: string, code: string): Promise<ResultatAuth> => {
+    const supabase = await obtenirSupabase();
+    if (!supabase) return { ok: false, message: 'Supabase n’est pas configuré.' };
+    const { error } = await supabase.auth.verifyOtp({ email: adresse, token: code, type: 'email' });
+    if (error) return { ok: false, message: error.message };
+    return { ok: true, message: 'Connexion réussie.' };
   };
 
   const deconnecter = async () => {
@@ -62,7 +87,7 @@ export function FournisseurSession({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Contexte.Provider value={{ userId, email, pret, connecter, deconnecter }}>
+    <Contexte.Provider value={{ userId, email, pret, envoyerCode, verifierCode, deconnecter }}>
       {children}
     </Contexte.Provider>
   );
@@ -75,10 +100,12 @@ export function useSession(): EtatSession {
 }
 
 export function Connexion() {
-  const { connecter } = useSession();
+  const { envoyerCode, verifierCode } = useSession();
+  const [etape, setEtape] = useState<'email' | 'code'>('email');
   const [adresse, setAdresse] = useState('');
+  const [code, setCode] = useState('');
   const [message, setMessage] = useState<string | null>(null);
-  const [envoi, setEnvoi] = useState(false);
+  const [enCours, setEnCours] = useState(false);
 
   if (!supabaseConfigure) {
     return (
@@ -96,34 +123,85 @@ export function Connexion() {
     );
   }
 
+  const demanderCode = async () => {
+    setEnCours(true);
+    const resultat = await envoyerCode(adresse.trim());
+    setMessage(resultat.message);
+    if (resultat.ok) setEtape('code');
+    setEnCours(false);
+  };
+
+  const validerCode = async () => {
+    setEnCours(true);
+    const resultat = await verifierCode(adresse.trim(), code);
+    setMessage(resultat.message);
+    setEnCours(false);
+    // Pas d'action supplémentaire ici : `onAuthStateChange` met à jour la
+    // session, et l'application quitte cet écran d'elle-même.
+  };
+
+  const changerAdresse = () => {
+    setEtape('email');
+    setCode('');
+    setMessage(null);
+  };
+
   return (
     <div className="ecran">
       <div className="carte">
         <h2>Connexion</h2>
-        <p className="note">
-          Un lien de connexion vous est envoyé par courriel. Aucun mot de passe à
-          retenir ni à saisir sur mobile.
-        </p>
-        <input
-          className="champ"
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          placeholder="votre@adresse.fr"
-          value={adresse}
-          onChange={(e) => setAdresse(e.target.value)}
-        />
-        <button
-          className="bouton bouton-principal"
-          disabled={envoi || !adresse.includes('@')}
-          onClick={async () => {
-            setEnvoi(true);
-            setMessage(await connecter(adresse));
-            setEnvoi(false);
-          }}
-        >
-          {envoi ? 'Envoi…' : 'Recevoir le lien'}
-        </button>
+
+        {etape === 'email' ? (
+          <>
+            <p className="note">
+              Un code à 6 chiffres vous est envoyé par courriel. Aucun mot de passe à
+              retenir ni à saisir sur mobile.
+            </p>
+            <input
+              className="champ"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              placeholder="votre@adresse.fr"
+              value={adresse}
+              onChange={(e) => setAdresse(e.target.value)}
+            />
+            <button
+              className="bouton bouton-principal"
+              disabled={enCours || !adresse.includes('@')}
+              onClick={() => void demanderCode()}
+            >
+              {enCours ? 'Envoi…' : 'Recevoir le code'}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="note">
+              Code envoyé à {adresse}. Saisissez les 6 chiffres reçus par courriel.
+            </p>
+            <input
+              className="champ champ-montant"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="000000"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            />
+            <button
+              className="bouton bouton-principal"
+              disabled={enCours || code.length !== 6}
+              onClick={() => void validerCode()}
+            >
+              {enCours ? 'Vérification…' : 'Se connecter'}
+            </button>
+            <button className="lien" onClick={changerAdresse}>
+              Changer d’adresse
+            </button>
+          </>
+        )}
+
         {message && <p className="note">{message}</p>}
       </div>
     </div>
