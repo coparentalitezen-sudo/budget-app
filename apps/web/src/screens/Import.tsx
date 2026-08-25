@@ -47,6 +47,7 @@ export function Import() {
   const [resultat, setResultat] = useState<string | null>(null);
   const [dernierImport, setDernierImport] = useState<DernierImport | null>(null);
   const [annulationEnCours, setAnnulationEnCours] = useState(false);
+  const [diagnosticOuvert, setDiagnosticOuvert] = useState(false);
 
   useEffect(() => {
     void lireMeta<DernierImport | null>(CLE_DERNIER_IMPORT, null).then(setDernierImport);
@@ -317,6 +318,39 @@ export function Import() {
               Importer {apercu.candidates.length} transaction(s) en attente
             </button>
             <button className="bouton" onClick={() => setApercu(null)}>Annuler</button>
+          </Carte>
+
+          <Carte
+            titre="Diagnostic"
+            action={
+              <button className="lien" onClick={() => setDiagnosticOuvert((v) => !v)}>
+                {diagnosticOuvert ? 'Masquer' : 'Afficher'}
+              </button>
+            }
+          >
+            <p className="note">
+              En cas d’erreur de signe ou de montant, ouvrez ceci et faites une
+              capture d’écran de la ligne concernée — c’est le texte tel que le
+              code le lit réellement, avant toute interprétation. Les tabulations
+              (séparations de colonnes détectées) sont affichées entre crochets.
+            </p>
+            {diagnosticOuvert && (
+              <div style={{ overflowX: 'auto' }}>
+                {apercu.lignes.map((l) => (
+                  <div key={l.ligne} className="scenario">
+                    <div className="scenario-tete">
+                      <span>Ligne {l.ligne}</span>
+                      <Etiquette ton={l.erreur ? 'insuffisant' : l.sens === 'credit' ? 'ok' : undefined}>
+                        {l.erreur ?? `${l.sens} · ${montant(l.montant)}`}
+                      </Etiquette>
+                    </div>
+                    <p className="chemin" style={{ whiteSpace: 'pre-wrap' }}>
+                      {l.brut.replace(/\t/g, ' [TAB] ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </Carte>
         </>
       )}

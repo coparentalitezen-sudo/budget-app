@@ -207,6 +207,111 @@ describe('Libellé jamais pollué par du texte d’en-tête ou de pied de page',
   });
 });
 
+describe('Relevé sans colonnes fiables : sens déterminé par mots-clés (cas réel Hello bank)', () => {
+  // Reproduit la structure exacte constatée sur un relevé réel : entête
+  // fragmentée par une espace parasite entre la première lettre et le
+  // reste du mot (« D ate », « R ELEVE »), répartie sur deux lignes, et une
+  // opération dont le libellé démarre AVANT sa ligne date+montant (qui ne
+  // porte alors, à elle seule, aucun texte).
+  const texte = [
+    'R ELEVE DE COMPTE CHEQUES',
+    'du 15 juin 2026 au 15 juillet 2026',
+    'D ate\tV aleur',
+    'N ature des opérations\tD ébit\tC rédit',
+    'SOLDE CREDITEUR AU 15.06.2026\t117,41',
+    // Libellé sur sa propre ligne AVANT la date+montant (mise en page qui
+    // centre la ligne date/montant au milieu d'un libellé multi-lignes).
+    'VIR CPTE A CPTE EMIS /MOTIF VIREMENT',
+    '15.06\t16.06\t50,00',
+    'VERS LIVRET DEV. DURABLE ET SOLIDAIRE',
+    // Achat carte : la date+montant porte directement le libellé.
+    '17.06\tFACTURE(S) CARTE 4974XXXXXXXX5531\t17.06\t18,50',
+    'DU 160626 MARIE BLACHERE',
+    // Virement reçu, libellé avant la date+montant, deux dates différentes
+    // (16/06/2026, valeur 24/06/2026 sur ce montant précis).
+    'VIR SEPA RECU /DE PAIE GROUPE BNP PARIBAS /MOTIF',
+    '26.06\t24.06\t2 660,94',
+    'VIREMENT SALAIRE /REF',
+    // Long code numérique de bas de page, jamais une opération.
+    '619700864913',
+  ].join('\n');
+
+  test('l’entête fragmentée sur deux lignes est écartée comme administrative', () => {
+    const { administratives } = analyserRelevePdf(texte);
+    // R ELEVE..., période, D ate/V aleur, N ature.../D ébit/C rédit, SOLDE CREDITEUR, code numérique = 6
+    assert.equal(administratives, 6);
+  });
+
+  test('les 3 opérations réelles sont reconnues, aucune illisible', () => {
+    const { lignes } = analyserRelevePdf(texte);
+    assert.equal(lignes.length, 3);
+    assert.ok(lignes.every((l) => l.erreur === undefined));
+  });
+
+  test('virement ÉMIS avant sa ligne date+montant : débit, libellé complet reconstitué', () => {
+    const { lignes } = analyserRelevePdf(texte);
+    const v = lignes[0];
+    assert.equal(v.date, '2026-06-15');
+    assert.equal(v.montant, 5000);
+    assert.equal(v.sens, 'debit');
+    assert.match(v.libelle, /VIR CPTE A CPTE EMIS/);
+    assert.match(v.libelle, /VERS LIVRET DEV/);
+  });
+
+  test('achat carte (FACTURE(S) CARTE) : débit', () => {
+    const { lignes } = analyserRelevePdf(texte);
+    const c = lignes[1];
+    assert.equal(c.date, '2026-06-17');
+    assert.equal(c.montant, 1850);
+    assert.equal(c.sens, 'debit');
+    assert.match(c.libelle, /MARIE BLACHERE/);
+  });
+
+  test('virement REÇU avant sa ligne date+montant : crédit, montant à séparateur milliers espace', () => {
+    const { lignes } = analyserRelevePdf(texte);
+    const s = lignes[2];
+    assert.equal(s.date, '2026-06-26');
+    assert.equal(s.montant, 266094);
+    assert.equal(s.sens, 'credit');
+    assert.match(s.libelle, /PAIE GROUPE BNP PARIBAS/);
+    assert.match(s.libelle, /VIREMENT SALAIRE/);
+  });
+
+  test('« BNP PARIBAS » mentionné dans une opération (émetteur du salaire) n’est jamais pris pour du texte institutionnel', () => {
+    // Régression : le motif administratif visant les mentions légales de
+    // bas de page ne doit matcher qu'en tout DÉBUT de ligne, jamais une
+    // opération qui mentionne BNP Paribas comme émetteur.
+    assert.equal(estLigneAdministrative('VIR SEPA RECU /DE PAIE GROUPE BNP PARIBAS /MOTIF'), false);
+    assert.equal(estLigneAdministrative('BNP Paribas SA au capital de 2 468 663 292 euros'), true);
+  });
+
+  test('un remboursement carte (REMBOURST) est un crédit, sans mot-clé RECU', () => {
+    const t = [
+      'REMBOURST CB DU 230626 LEROY MERLIN FR',
+      '25.06\t25.06\t42,80',
+      'CARTE 4974XXXXXXXX5531',
+    ].join('\n');
+    const { lignes } = analyserRelevePdf(t);
+    assert.equal(lignes.length, 1);
+    assert.equal(lignes[0].sens, 'credit');
+    assert.equal(lignes[0].montant, 4280);
+  });
+
+  test('un prélèvement (PRLV) sans autre mot-clé reste un débit', () => {
+    const t = '19.06\tPRLV SEPA AUTOROUTES DU SUD DE LA FRANCE\t19.06\t34,50';
+    const { lignes } = analyserRelevePdf(t);
+    assert.equal(lignes[0].sens, 'debit');
+    assert.equal(lignes[0].montant, 3450);
+  });
+
+  test('une opération sans mot-clé de sens reste un débit par défaut (majorité réelle)', () => {
+    const t = '30.06\t*COMMISSIONS FRAIS PAR SAISIE\t30.06\t7,07';
+    const { lignes } = analyserRelevePdf(t);
+    assert.equal(lignes[0].sens, 'debit');
+    assert.equal(lignes[0].montant, 707);
+  });
+});
+
 describe('Un débit ne devient jamais un crédit (signe séparé par l’extraction PDF)', () => {
   test('un signe « - » isolé dans son propre champ est recollé au montant', () => {
     // Sans entête débit/crédit détectée : l'extraction a inséré une

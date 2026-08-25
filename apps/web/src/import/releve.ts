@@ -1,5 +1,6 @@
 import type { Cents } from '@budget/core/src/money.ts';
 import { analyserDate, analyserMontant, type LigneAnalysee } from './parseur.ts';
+import { normaliser } from './regles.ts';
 
 /**
  * Analyse spécifique aux relevés bancaires extraits d'un PDF.
@@ -111,19 +112,58 @@ const MOTIFS_ADMINISTRATIFS: RegExp[] = [
   /^(ancien|nouveau)\s+solde/i,
   /\bsolde\s+(interm[ée]diaire|progressif|au\s+\d|cr[ée]diteur|d[ée]biteur|initial|final)\b/i,
   /^total\s+(des\s+)?(mouvements|op[ée]rations)/i,
-  // Texte commercial / administratif / juridique
-  /hello\s*bank/i,
-  /bnp\s*paribas/i,
+  // Texte commercial / administratif / juridique. Ancré en tout début de
+  // ligne : « BNP PARIBAS » apparaît aussi comme émetteur dans de vraies
+  // opérations (virement de salaire, intéressement...), où il ne doit
+  // jamais faire passer la ligne pour un texte institutionnel (vérifié sur
+  // un relevé réel : « VIR SEPA RECU /DE PAIE GROUPE BNP PARIBAS... »).
+  /^hello\s*bank/i,
+  /^bnp\s*paribas/i,
   /^(retrouvez|suivez)[- ]nous/i,
   /\bcapital\s+de\b/i,
   /\bRCS\b|\bORIAS\b/,
   /^www\.|^https?:\/\//i,
+  // Coordonnées / mentions courantes.
+  /^t[ée]l\s*:/i,
+  /^monnaie\s+du\s+compte/i,
+  /co[uû]t\s+d['’]un\s+appel/i,
+  /^id\.?\s*ce\s/i,
+  // Ligne composée uniquement d'un long code numérique (référence de bas de
+  // page, numéro de contrat...), jamais une opération à elle seule.
+  /^\d{8,}\s*$/,
+];
+
+/**
+ * Certains relevés séparent la première lettre d'un mot d'en-tête par une
+ * espace parasite (effet de mise en forme du PDF, ex. « D ate », « R ELEVE » —
+ * observé sur de vrais relevés Hello bank / BNP Paribas). Les motifs les
+ * plus sensibles à ce problème sont retentés sur une version compactée
+ * (majuscules, accents et espaces retirés) plutôt que sur le texte brut.
+ */
+const MOTIFS_COMPACTS: RegExp[] = [
+  /^RELEVEDECOMPTE/,
+  /^EXTRAITDECOMPTE/,
+  /^DATE$/,
+  /^DATEVALEUR$/,
+  /^VALEUR$/,
+  /^NATUREDESOPERATIONS?/,
+  /^DEBIT$/,
+  /^CREDIT$/,
+  /^DEBITCREDIT$/,
+  /^TEL:/,
+  /^RIB:/,
+  /^IBAN:/,
+  /^BIC:/,
+  /^MONNAIEDUCOMPTE/,
+  /^IDCEFR/,
 ];
 
 export function estLigneAdministrative(ligne: string): boolean {
   const t = ligne.trim();
   if (t === '') return true;
-  return MOTIFS_ADMINISTRATIFS.some((motif) => motif.test(t));
+  if (MOTIFS_ADMINISTRATIFS.some((motif) => motif.test(t))) return true;
+  const compact = normaliser(t).replace(/\s+/g, '');
+  return MOTIFS_COMPACTS.some((motif) => motif.test(compact));
 }
 
 export interface ColonnesOperations {
@@ -194,6 +234,14 @@ function extraireDateDebut(
 /** Montant en toute fin de chaîne, notation française. Repli quand aucune colonne n'a été détectée. */
 const MONTANT_FIN_LIGNE = /(-?\(?\d{1,3}(?:[  ]?\d{3})*(?:[.,]\d{2})?\)?)\s*(?:€|EUR)?\s*$/i;
 
+/**
+ * Un champ « JJ.MM » ou « JJ/MM » est presque toujours une date de valeur —
+ * une deuxième date imprimée à côté de la date d'opération, courante chez
+ * Hello bank / BNP Paribas — jamais un montant, même si sa forme numérique
+ * (« 16.06 ») passerait par erreur la validation d'un montant (16,06 €).
+ */
+const RESSEMBLE_DATE_VALEUR = /^\d{1,2}[./]\d{1,2}$/;
+
 function nettoyerLibelle(texte: string): string {
   return texte.replace(/\t/g, ' ').replace(/\s{2,}/g, ' ').trim();
 }
@@ -254,41 +302,49 @@ function analyserLigneOperation(
         sens = brutMontant >= 0 ? 'credit' : 'debit';
       }
     }
-  } else if (champs.length >= 3) {
-    // Pas d'entête retrouvée : repli positionnel — débit puis crédit, dans
-    // l'ordre où l'espacement du PDF les a séparés.
-    const debit = analyserMontant(champs[1] ?? '');
-    const credit = analyserMontant(champs[2] ?? '');
-    if (credit !== null && credit !== 0) {
-      montant = Math.abs(credit);
-      sens = 'credit';
-    } else if (debit !== null && debit !== 0) {
-      montant = Math.abs(debit);
-      sens = 'debit';
+  } else {
+    // Pas d'entête retrouvée : la position seule ne permet PAS de distinguer
+    // débit et crédit sur ce type de relevé (une seule position est
+    // partagée par les deux, l'autre étant toujours vide — vérifié sur un
+    // relevé réel). On écarte d'abord les champs qui ressemblent à une date
+    // de valeur, puis on prend le DERNIER champ restant qui s'analyse comme
+    // un montant valide ; tout le reste forme le libellé. Le sens
+    // définitif (débit/crédit) est déterminé après coup par mots-clés, voir
+    // `ajusterSensParMotsCles`.
+    const champsUtiles = champs.filter((c) => !RESSEMBLE_DATE_VALEUR.test(c));
+    let indexMontant = -1;
+    for (let i = champsUtiles.length - 1; i >= 0; i--) {
+      if (analyserMontant(champsUtiles[i]) !== null) {
+        indexMontant = i;
+        break;
+      }
     }
-  } else if (champs.length === 2) {
-    const brutMontant = analyserMontant(champs[1] ?? '');
-    if (brutMontant !== null) {
+    if (indexMontant >= 0) {
+      const brutMontant = analyserMontant(champsUtiles[indexMontant])!;
       montant = Math.abs(brutMontant);
-      sens = brutMontant >= 0 ? 'credit' : 'debit';
+      // Un montant non signé (l'écrasante majorité sur ce type de relevé,
+      // où débit et crédit partagent la même position) est présumé débit
+      // par défaut — c'est le mot-clé (ÉMIS/REÇU...) qui tranchera ensuite
+      // pour les crédits non signés ; un signe négatif explicite reste de
+      // toute façon un débit.
+      sens = 'debit';
+      libelle = champsUtiles.filter((_, i) => i !== indexMontant).join(' ').trim();
+    } else if (champsUtiles.length > 0) {
+      libelle = champsUtiles.join(' ').trim();
     }
-  }
 
-  if (montant === null && colonnes === null) {
-    // Repli seulement quand la structure du relevé est totalement inconnue
-    // (pas d'entête détectée, pas d'écart de colonne) : on cherche le
-    // dernier nombre de la ligne. Si les colonnes SONT connues et que la
-    // case attendue est vide, ce n'est pas une erreur d'extraction — il n'y
-    // a simplement pas de montant à cet endroit (colonne Solde par
-    // exemple) ; aller chercher un autre nombre romprait la correspondance
-    // avec la vraie colonne du montant.
-    const m = MONTANT_FIN_LIGNE.exec(reste.trimEnd());
-    if (m) {
-      const brutMontant = analyserMontant(m[1]);
-      if (brutMontant !== null) {
-        montant = Math.abs(brutMontant);
-        sens = brutMontant >= 0 ? 'credit' : 'debit';
-        libelle = reste.slice(0, m.index);
+    if (montant === null) {
+      // Dernier repli : le texte brut n'a même pas pu être découpé en
+      // champs exploitables (pas de tabulation). On cherche le dernier
+      // nombre de la ligne, en écartant une éventuelle date de valeur.
+      const m = MONTANT_FIN_LIGNE.exec(reste.trimEnd());
+      if (m && !RESSEMBLE_DATE_VALEUR.test(m[1].trim())) {
+        const brutMontant = analyserMontant(m[1]);
+        if (brutMontant !== null) {
+          montant = Math.abs(brutMontant);
+          sens = 'debit';
+          libelle = reste.slice(0, m.index);
+        }
       }
     }
   }
@@ -334,10 +390,31 @@ export function analyserRelevePdf(texte: string): ReleveAnalyse {
   let administratives = 0;
   let derniereOperation: LigneAnalysee | null = null;
 
+  // Ligne de suite pas encore rattachée à une opération. Sur certains
+  // relevés (vérifié sur un relevé réel Hello bank), le libellé d'une
+  // opération qui déborde sur plusieurs lignes commence AVANT sa propre
+  // ligne date+montant, qui ne porte alors aucun texte à elle seule — la
+  // mise en page centre la ligne date/montant au milieu d'un libellé
+  // multi-lignes plutôt qu'au-dessus. On ne rattache donc une ligne de
+  // suite à l'opération précédente qu'après avoir vérifié que la ligne
+  // suivante n'est pas justement le début (sans libellé propre) de
+  // l'opération à laquelle elle appartient réellement.
+  let enAttente: string | null = null;
+  const rattacherEnAttente = () => {
+    if (enAttente === null) return;
+    if (derniereOperation) {
+      derniereOperation.libelle = nettoyerLibelle(`${derniereOperation.libelle} ${enAttente}`);
+    } else {
+      administratives++;
+    }
+    enAttente = null;
+  };
+
   for (let i = 0; i < brutes.length; i++) {
     const brut = brutes[i];
 
     if (estLigneAdministrative(brut)) {
+      rattacherEnAttente();
       administratives++;
       continue;
     }
@@ -345,19 +422,53 @@ export function analyserRelevePdf(texte: string): ReleveAnalyse {
     const debut = extraireDateDebut(brut, periode);
     if (debut) {
       const analysee = analyserLigneOperation(brut, i + 1, debut.date, debut.reste, colonnes);
+      if (analysee.libelle === '' && enAttente !== null) {
+        // Cette opération n'a pas de libellé propre : la ligne en attente
+        // la décrit, elle n'appartient pas à l'opération précédente.
+        analysee.libelle = nettoyerLibelle(enAttente);
+        enAttente = null;
+      } else {
+        rattacherEnAttente();
+      }
       lignes.push(analysee);
       derniereOperation = analysee;
       continue;
     }
 
     // Ni administrative, ni le début d'une opération : suite d'un libellé
-    // qui déborde sur plusieurs lignes.
-    if (derniereOperation) {
-      derniereOperation.libelle = nettoyerLibelle(`${derniereOperation.libelle} ${brut}`);
-    } else {
-      administratives++;
-    }
+    // qui déborde sur plusieurs lignes — mise en attente (voir ci-dessus).
+    rattacherEnAttente();
+    enAttente = brut;
   }
+  rattacherEnAttente();
+
+  // La position ne distingue pas débit et crédit quand aucune entête n'a
+  // été retrouvée (voir `analyserLigneOperation`) : les mots-clés SEPA
+  // standards (ÉMIS/REÇU...) tranchent après coup. Laissé de côté quand une
+  // entête a été détectée : la position y est déjà fiable (protégée par les
+  // tests sur la colonne Solde), un mot-clé fortuit dans un libellé ne doit
+  // pas la contredire.
+  if (colonnes === null) ajusterSensParMotsCles(lignes);
 
   return { lignes, administratives };
+}
+
+/**
+ * Sur un relevé sans entête de colonnes exploitable, débit et crédit
+ * partagent une seule position de champ (l'autre est toujours vide) : la
+ * position ne permet jamais de trancher. La terminologie SEPA « ÉMIS »
+ * (envoyé) / « REÇU » (reçu), commune à toutes les banques françaises, et
+ * le type d'opération (achat carte, prélèvement, remboursement) sont le
+ * seul signal fiable — vérifié mot pour mot sur un relevé réel.
+ */
+function ajusterSensParMotsCles(lignes: LigneAnalysee[]): void {
+  for (const l of lignes) {
+    if (l.montant === null) continue;
+    const t = l.libelle.toUpperCase();
+    if (/\bRECU\b/.test(t) || /\bREMBOURST\b/.test(t) || /\bREMBOURSEMENT\b/.test(t)) {
+      l.sens = 'credit';
+    } else if (/\bEMIS\b/.test(t) || (t.includes('FACTURE') && t.includes('CARTE')) || /\bPRLV\b/.test(t)) {
+      l.sens = 'debit';
+    }
+  }
 }

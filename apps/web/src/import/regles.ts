@@ -238,10 +238,19 @@ export const REGLES_INITIALES: { motif: string; categorie: string; commentaire?:
  */
 const MOTS_OUTILS = new Set([
   'PAIEMENT', 'PAIMENT', 'CB', 'CARTE', 'ACHAT', 'PRLV', 'PRELEVEMENT',
-  'VIREMENT', 'VIR', 'FACTURE', 'DU', 'DE', 'LE', 'LA', 'DEBIT', 'CREDIT',
-  'SEPA', 'RETRAIT', 'DAB', 'ECH', 'REF', 'SARL', 'SAS', 'EURL',
-  'COM', 'WWW', 'NET', 'ORG', 'FR', 'HTTP', 'HTTPS',
+  'VIREMENT', 'VIRT', 'VIR', 'FACTURE', 'DU', 'DE', 'LE', 'LA', 'DEBIT', 'CREDIT',
+  'SEPA', 'RETRAIT', 'DAB', 'ECH', 'REF', 'REFDO', 'REFBEN', 'SARL', 'SAS', 'EURL',
+  'COM', 'WWW', 'NET', 'ORG', 'FR', 'FRA', 'HTTP', 'HTTPS',
+  // Terminologie propre aux relevés PDF (Hello bank / BNP Paribas) : sens
+  // de l'opération, mentions de compte, motif générique — jamais le nom
+  // d'un commerçant, vérifié sur un relevé réel.
+  'CPTE', 'MOTIF', 'EMIS', 'RECU', 'INSTANT', 'VERS', 'BEN', 'ID', 'MDT', 'LIB', 'EMETTEUR',
 ]);
+
+/** Fragment de montant collé au libellé (« 29,00EUR »), jamais un mot du commerçant. */
+const RESSEMBLE_FRAGMENT_MONTANT = /^\d+(?:[.,]\d+)?EUR?$/;
+/** Référence longue (numéro de carte masqué, hachage de transaction...) : mélange chiffres/lettres, jamais lisible. */
+const RESSEMBLE_REFERENCE = /^(?=.*\d)(?=.*[A-Z])[A-Z0-9]{10,}$/;
 
 function motsSignificatifs(libelle: string): string[] {
   return normaliser(libelle)
@@ -251,6 +260,8 @@ function motsSignificatifs(libelle: string): string[] {
       if (MOTS_OUTILS.has(mot)) return false;
       // Suites de chiffres : dates, numéros de carte, références.
       if (/^\d+$/.test(mot)) return false;
+      if (RESSEMBLE_FRAGMENT_MONTANT.test(mot)) return false;
+      if (RESSEMBLE_REFERENCE.test(mot)) return false;
       return true;
     });
 }
