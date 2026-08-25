@@ -207,6 +207,34 @@ describe('Libellé jamais pollué par du texte d’en-tête ou de pied de page',
   });
 });
 
+describe('Bloc de mentions/frais après la dernière opération, jamais fusionné dedans', () => {
+  // Reproduit ce qui suit la dernière opération sur un relevé réel : total
+  // des mouvements, solde de clôture, une ligne de frais non reconnaissable
+  // individuellement, puis un texte explicatif imprimé lettre par lettre
+  // séparée d'une espace (« V ot r e s a ti sf a ct i on... »), sur lequel
+  // aucun motif ligne à ligne ne peut fiablement s'appuyer.
+  const texte = [
+    "17/06/2026\tPRLV SEPA EDF\t62,15\t",
+    'TOTAL DES OPERATIONS\t6 976,53\t8 682,27',
+    'SOLDE CREDITEUR AU 15.07.2026\t1 823,15',
+    '* Commissions sur services et opérations bancaires. Total : +7,07',
+    'V ot r e sa t is fa c ti o n e st n o tr e p ri o ri t é.',
+    '15/07/2026\tCECI RESSEMBLE A UNE OPERATION\t99,99\t',
+  ].join('\n');
+
+  test('la dernière vraie opération n’est jamais polluée par ce qui suit', () => {
+    const { lignes } = analyserRelevePdf(texte);
+    assert.equal(lignes.length, 1);
+    assert.equal(lignes[0].libelle, 'PRLV SEPA EDF');
+  });
+
+  test('même une ligne qui ressemble à une opération, après le total, est écartée', () => {
+    const { administratives } = analyserRelevePdf(texte);
+    // TOTAL, SOLDE, Commissions, Votre satisfaction, et la fausse opération = 5
+    assert.equal(administratives, 5);
+  });
+});
+
 describe('Relevé sans colonnes fiables : sens déterminé par mots-clés (cas réel Hello bank)', () => {
   // Reproduit la structure exacte constatée sur un relevé réel : entête
   // fragmentée par une espace parasite entre la première lettre et le

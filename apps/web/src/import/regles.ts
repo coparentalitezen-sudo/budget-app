@@ -238,7 +238,7 @@ export const REGLES_INITIALES: { motif: string; categorie: string; commentaire?:
  */
 const MOTS_OUTILS = new Set([
   'PAIEMENT', 'PAIMENT', 'CB', 'CARTE', 'ACHAT', 'PRLV', 'PRELEVEMENT',
-  'VIREMENT', 'VIRT', 'VIR', 'FACTURE', 'DU', 'DE', 'LE', 'LA', 'DEBIT', 'CREDIT',
+  'VIREMENT', 'VIRT', 'VIR', 'FACTURE', 'DU', 'DE', 'LE', 'LA', 'SUR', 'DEBIT', 'CREDIT',
   'SEPA', 'RETRAIT', 'DAB', 'ECH', 'REF', 'REFDO', 'REFBEN', 'SARL', 'SAS', 'EURL',
   'COM', 'WWW', 'NET', 'ORG', 'FR', 'FRA', 'HTTP', 'HTTPS',
   // Terminologie propre aux relevés PDF (Hello bank / BNP Paribas) : sens

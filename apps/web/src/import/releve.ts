@@ -80,6 +80,15 @@ export function deduireDateSansAnnee(
 }
 
 /**
+ * Total des mouvements du relevé : imprimé une seule fois, immédiatement
+ * après la DERNIÈRE vraie opération, suivi du solde de clôture puis d'un
+ * bloc de mentions/frais qui n'a plus rien de transactionnel (voir
+ * `estFinDesOperations`, plus bas) — jamais un sous-total intermédiaire sur
+ * ce type de relevé (vérifié sur un relevé réel).
+ */
+const MOTIF_TOTAL_OPERATIONS = /^total\s+(des\s+)?(mouvements|op[ée]rations)/i;
+
+/**
  * Motifs de lignes non transactionnelles : en-têtes, pieds de page, numéros
  * de page, coordonnées bancaires, période, titres, soldes intermédiaires,
  * texte commercial ou administratif. Volontairement génériques (Hello bank
@@ -111,7 +120,7 @@ const MOTIFS_ADMINISTRATIFS: RegExp[] = [
   // Soldes non transactionnels
   /^(ancien|nouveau)\s+solde/i,
   /\bsolde\s+(interm[ée]diaire|progressif|au\s+\d|cr[ée]diteur|d[ée]biteur|initial|final)\b/i,
-  /^total\s+(des\s+)?(mouvements|op[ée]rations)/i,
+  MOTIF_TOTAL_OPERATIONS,
   // Texte commercial / administratif / juridique. Ancré en tout début de
   // ligne : « BNP PARIBAS » apparaît aussi comme émetteur dans de vraies
   // opérations (virement de salaire, intéressement...), où il ne doit
@@ -164,6 +173,30 @@ export function estLigneAdministrative(ligne: string): boolean {
   if (MOTIFS_ADMINISTRATIFS.some((motif) => motif.test(t))) return true;
   const compact = normaliser(t).replace(/\s+/g, '');
   return MOTIFS_COMPACTS.some((motif) => motif.test(compact));
+}
+
+/**
+ * Certains relevés Hello bank / BNP Paribas ajoutent, après la dernière
+ * vraie opération, un bloc de mentions (frais du mois, autorisation de
+ * découvert, réclamations...) puis parfois plusieurs pages d'« Information
+ * préalable en matière de frais bancaires » — un texte explicatif imprimé
+ * avec UNE espace entre CHAQUE lettre (« S i vo u s ê te s ... »), et même
+ * un simulacre de tableau de frais qui ressemble à des opérations. Aucun
+ * motif ligne à ligne ne peut suivre cette mise en forme de façon fiable —
+ * vérifié sur un relevé réel, où tout ce bloc se retrouvait fusionné dans
+ * le libellé de la toute dernière opération. Le total des mouvements,
+ * imprimé une seule fois juste après la dernière vraie opération (voir
+ * `MOTIF_TOTAL_OPERATIONS`), en marque le début de façon fiable même
+ * lorsque le bloc de mentions ne commence pas explicitement par
+ * « Information préalable ». Une fois ce début repéré, tout ce qui suit est
+ * écarté sans y regarder de plus près : ce n'est plus un relevé de compte à
+ * cet endroit.
+ */
+function estFinDesOperations(ligne: string): boolean {
+  const t = ligne.trim();
+  if (MOTIF_TOTAL_OPERATIONS.test(t)) return true;
+  const compact = normaliser(t).replace(/\s+/g, '');
+  return compact.startsWith('INFORMATIONPREALABLE');
 }
 
 export interface ColonnesOperations {
@@ -412,6 +445,17 @@ export function analyserRelevePdf(texte: string): ReleveAnalyse {
 
   for (let i = 0; i < brutes.length; i++) {
     const brut = brutes[i];
+
+    if (estFinDesOperations(brut)) {
+      // Tout ce qui suit (parfois plusieurs pages) n'est plus une
+      // opération : voir la documentation de la fonction. La ligne en
+      // attente est d'abord rattachée normalement — elle appartient
+      // légitimement à la dernière VRAIE opération, rencontrée avant cette
+      // section.
+      rattacherEnAttente();
+      administratives += brutes.length - i;
+      break;
+    }
 
     if (estLigneAdministrative(brut)) {
       rattacherEnAttente();
