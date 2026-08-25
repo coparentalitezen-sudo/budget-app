@@ -58,6 +58,30 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
     }
   };
 
+  /**
+   * Suppression groupée de tout un lot (ex. un import entier resté sans
+   * identifiant, ou tout un ensemble filtré) : même suppression LOGIQUE,
+   * une par une, mais en un seul geste. Toujours confirmée avec le nombre
+   * exact concerné avant d'agir.
+   */
+  const [suppressionLotEnCours, setSuppressionLotEnCours] = useState(false);
+  const supprimerLot = async (transactionsCiblees: { id: string }[]) => {
+    if (transactionsCiblees.length === 0) return;
+    if (
+      !window.confirm(
+        `Supprimer ces ${transactionsCiblees.length} opération(s) ? Cette action est irréversible depuis l’application.`,
+      )
+    ) {
+      return;
+    }
+    setSuppressionLotEnCours(true);
+    try {
+      for (const t of transactionsCiblees) await supprimerTransaction(t.id);
+    } finally {
+      setSuppressionLotEnCours(false);
+    }
+  };
+
   // Les doublons sont SIGNALÉS, jamais masqués ni supprimés.
   const empreintesMultiples = useMemo(() => {
     const compte = new Map<string, number>();
@@ -137,6 +161,17 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
             </button>
           )}
           {resultatRecat && <p className="note">{resultatRecat}</p>}
+          {aRenseigner.length > 0 && (
+            <button
+              className="bouton"
+              disabled={suppressionLotEnCours}
+              onClick={() => void supprimerLot(aRenseigner)}
+            >
+              {suppressionLotEnCours
+                ? 'Suppression…'
+                : `Supprimer ces ${aRenseigner.length} opération(s)`}
+            </button>
+          )}
           <button className="bouton" onClick={() => setVue('toutes')}>
             Revenir à toutes les opérations
           </button>
@@ -210,6 +245,18 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
         {' · '}
         {filtrees.filter((t) => t.statut === 'pending').length} en attente
       </p>
+
+      {filtrees.length > 0 && (
+        <button
+          className="bouton"
+          disabled={suppressionLotEnCours}
+          onClick={() => void supprimerLot(filtrees)}
+        >
+          {suppressionLotEnCours
+            ? 'Suppression…'
+            : `Supprimer les ${filtrees.length} opération(s) affichées`}
+        </button>
+      )}
 
       {parJour.length === 0 && (
         <Vide message="Aucune transaction. Utilisez le bouton + pour en saisir une, même hors ligne." />
