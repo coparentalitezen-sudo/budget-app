@@ -106,6 +106,17 @@ export function Connexion() {
   const [code, setCode] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
+  // Anti-rafale : chaque appel à `signInWithOtp` consomme le quota d'envoi
+  // (très bas par défaut chez Supabase, voir SMTP personnalisé). Un délai
+  // avant de pouvoir renvoyer un code évite qu'un double-clic ou une
+  // impatience ne l'épuise en quelques secondes.
+  const [attenteRenvoi, setAttenteRenvoi] = useState(0);
+
+  useEffect(() => {
+    if (attenteRenvoi <= 0) return;
+    const minuteur = setTimeout(() => setAttenteRenvoi((s) => s - 1), 1000);
+    return () => clearTimeout(minuteur);
+  }, [attenteRenvoi]);
 
   if (!supabaseConfigure) {
     return (
@@ -127,7 +138,10 @@ export function Connexion() {
     setEnCours(true);
     const resultat = await envoyerCode(adresse.trim());
     setMessage(resultat.message);
-    if (resultat.ok) setEtape('code');
+    if (resultat.ok) {
+      setEtape('code');
+      setAttenteRenvoi(60);
+    }
     setEnCours(false);
   };
 
@@ -144,6 +158,7 @@ export function Connexion() {
     setEtape('email');
     setCode('');
     setMessage(null);
+    setAttenteRenvoi(0);
   };
 
   return (
@@ -196,9 +211,18 @@ export function Connexion() {
             >
               {enCours ? 'Vérification…' : 'Se connecter'}
             </button>
-            <button className="lien" onClick={changerAdresse}>
-              Changer d’adresse
-            </button>
+            <div className="connexion-actions">
+              <button
+                className="lien"
+                disabled={enCours || attenteRenvoi > 0}
+                onClick={() => void demanderCode()}
+              >
+                {attenteRenvoi > 0 ? `Renvoyer le code (${attenteRenvoi}s)` : 'Renvoyer le code'}
+              </button>
+              <button className="lien" onClick={changerAdresse}>
+                Changer d’adresse
+              </button>
+            </div>
           </>
         )}
 

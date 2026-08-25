@@ -68,13 +68,50 @@ supabase db push          # applique les 10 migrations
 
 Puis dans l'interface Supabase :
 
-1. **Authentication → Providers** : activer *Email*, et y activer les liens
-   magiques (l'application n'utilise aucun mot de passe).
-2. **Authentication → URL Configuration → Redirect URLs** : ajouter l'URL
-   Vercel de production **et** `http://localhost:5173` pour le développement.
-   Sans cela, le lien de connexion renvoie vers une page introuvable.
-3. **Settings → API** : relever `Project URL`, la clé `anon` et la clé
+1. **Authentication → Providers** : activer *Email*. L'application se
+   connecte par code OTP à 6 chiffres saisi dans la PWA (`signInWithOtp` +
+   `verifyOtp`), pas par mot de passe. Le courriel envoyé par Supabase
+   contient aussi un lien magique par défaut ; l'application ne s'en sert
+   pas, mais s'il est cliqué, **Authentication → URL Configuration →
+   Redirect URLs** doit tout de même lister l'URL Vercel de production et
+   `http://localhost:5173`, sinon il renvoie vers une page introuvable.
+2. **Settings → API** : relever `Project URL`, la clé `anon` et la clé
    `service_role`.
+3. **SMTP personnalisé (recommandé avant tout usage réel)** : voir la
+   section dédiée ci-dessous. Sans lui, l'envoi d'e-mails de connexion est
+   limité à quelques envois par heure (garde-fou anti-abus de Supabase) —
+   largement insuffisant dès qu'on teste ou qu'on utilise l'app au
+   quotidien.
+
+### SMTP personnalisé
+
+Le SMTP intégré de Supabase est prévu pour du développement, pas pour un
+usage réel : la limite d'envoi est très basse et non configurable. La
+solution recommandée est **Resend** (offre gratuite : 3 000 e-mails/mois,
+100/jour ; domaine d'expédition `onboarding@resend.dev` fourni d'emblée,
+utilisable sans configuration DNS — un domaine personnalisé peut être
+ajouté plus tard sans rien changer côté application). Resend est cité
+explicitement par la documentation Supabase comme fournisseur SMTP supporté.
+
+1. Créer un compte sur [resend.com](https://resend.com) (offre gratuite).
+2. **API Keys → Create API Key** : créer une clé avec la permission
+   *Sending access*.
+3. Dans Supabase : **Authentication → Emails → SMTP Settings** (aussi
+   appelé *Custom SMTP* selon la version de l'interface) :
+   - **Enable Custom SMTP** : activer.
+   - **Sender email** : `onboarding@resend.dev` (ou une adresse de votre
+     domaine, une fois celui-ci vérifié dans Resend).
+   - **Sender name** : `Budget`.
+   - **Host** : `smtp.resend.com`
+   - **Port** : `587`
+   - **Username** : `resend`
+   - **Password** : la clé API Resend créée à l'étape 2.
+4. **Save**, puis renvoyer un code de connexion depuis l'application pour
+   vérifier que l'e-mail part sans erreur.
+
+Aucune variable d'environnement ni fichier de ce dépôt n'a besoin d'être
+modifié pour cela : l'envoi des e-mails est entièrement piloté côté
+Supabase, en amont du code de l'application.
 
 ## 4. Variables d'environnement Vercel
 
