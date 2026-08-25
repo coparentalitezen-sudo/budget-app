@@ -10,7 +10,7 @@ import { Import } from './screens/Import.tsx';
 import { Configurer } from './screens/Configurer.tsx';
 import { Plus } from './screens/Plus.tsx';
 import { SaisieRapide } from './components/SaisieRapide.tsx';
-import { installerSyncAutomatique } from './db/sync.ts';
+import { installerSyncAutomatique, synchroniser } from './db/sync.ts';
 import { useOutboxCount } from './state/useDonnees.ts';
 import { Connexion, FournisseurSession, useSession } from './lib/session.tsx';
 import { supabaseConfigure } from './lib/supabase.ts';
@@ -58,6 +58,15 @@ function Application() {
       detacher();
     };
   }, []);
+
+  // Synchronise dès que la session est confirmée : `installerSyncAutomatique`
+  // tente déjà un premier passage au montage, mais celui-ci peut précéder la
+  // restauration de session (lecture asynchrone). Sans ce second
+  // déclenchement, la file d'attente ne se viderait qu'au prochain appui
+  // manuel sur « Synchroniser maintenant » ou à une vraie coupure réseau.
+  useEffect(() => {
+    if (userId) void synchroniser();
+  }, [userId]);
 
   // Tant que Supabase n'est pas configuré, l'application reste pleinement
   // utilisable en local : la connexion n'est exigée que pour synchroniser.

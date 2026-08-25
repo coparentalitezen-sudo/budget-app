@@ -180,11 +180,21 @@ export async function synchroniser(): Promise<ResultatSync> {
   };
 }
 
-/** Déclenche une synchronisation au retour du réseau. */
+/**
+ * Déclenche une synchronisation au retour du réseau, ET une première fois
+ * au lancement de l'app. Sans ce second déclenchement, un appareil déjà en
+ * ligne à l'ouverture (le cas courant) ne voit jamais l'évènement `online`
+ * — rien ne partait alors tant que l'utilisateur n'appuyait pas
+ * manuellement sur « Synchroniser maintenant » dans Réglages, laissant la
+ * file d'attente grossir silencieusement. `synchroniser()` reste sans
+ * effet de bord si hors ligne, non configuré ou sans session : ce premier
+ * appel est donc sûr dans tous les cas.
+ */
 export function installerSyncAutomatique(onResultat: (r: ResultatSync) => void): () => void {
   const declencher = () => {
     void synchroniser().then(onResultat);
   };
+  declencher();
   window.addEventListener('online', declencher);
   return () => window.removeEventListener('online', declencher);
 }
