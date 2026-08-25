@@ -49,10 +49,15 @@ export async function recupererGoogleSheet(url: string): Promise<string> {
  * démarrage de l'application.
  *
  * Limite assumée : les PDF de relevés n'ont aucune structure normalisée.
- * L'extraction reconstitue des lignes de texte, que l'analyseur tabulaire
- * traite ensuite comme un CSV à séparateur d'espaces. Le taux de réussite
- * dépend de la banque : l'aperçu avant validation existe pour cela, et le
- * CSV reste toujours préférable quand la banque le propose.
+ * L'extraction reconstitue des lignes de texte à partir des positions des
+ * fragments. Un grand écart horizontal entre deux fragments d'une même
+ * ligne (typiquement : libellé -> colonne débit -> colonne crédit) est
+ * traduit par une tabulation plutôt qu'une simple espace, pour que
+ * `releve.ts` puisse retrouver la structure en colonnes du relevé — les
+ * colonnes débit/crédit en particulier ne peuvent pas se distinguer une
+ * fois le texte aplati en une seule chaîne. Le taux de réussite dépend
+ * malgré tout de la banque : l'aperçu avant validation existe pour cela,
+ * et le CSV reste toujours préférable quand la banque le propose.
  */
 export async function extraireTextePdf(fichier: File): Promise<string> {
   const pdfjs = await import('pdfjs-dist');
@@ -65,25 +70,40 @@ export async function extraireTextePdf(fichier: File): Promise<string> {
   const document = await pdfjs.getDocument({ data: donnees }).promise;
   const lignes: string[] = [];
 
+  // Écart horizontal (en points PDF) au-delà duquel deux fragments d'une
+  // même ligne sont considérés comme appartenant à deux colonnes distinctes
+  // plutôt qu'à deux mots d'un même champ. Valeur empirique : à un corps de
+  // texte courant (9-10 pt), une espace entre mots dépasse rarement 4-5 pt,
+  // un écart de colonne en fait le double ou plus.
+  const SEUIL_COLONNE = 8;
+
   for (let numero = 1; numero <= document.numPages; numero++) {
     const page = await document.getPage(numero);
     const contenu = await page.getTextContent();
 
     // Regroupement par ordonnée : les fragments d'une même ligne visuelle
     // partagent leur position verticale à un point près.
-    const parLigne = new Map<number, { x: number; texte: string }[]>();
+    const parLigne = new Map<number, { x: number; largeur: number; texte: string }[]>();
     for (const element of contenu.items) {
       if (!('str' in element) || element.str.trim() === '') continue;
       const y = Math.round(element.transform[5]);
       const x = element.transform[4] as number;
       const groupe = parLigne.get(y) ?? [];
-      groupe.push({ x, texte: element.str });
+      groupe.push({ x, largeur: element.width, texte: element.str });
       parLigne.set(y, groupe);
     }
 
     for (const y of [...parLigne.keys()].sort((a, b) => b - a)) {
       const fragments = parLigne.get(y)!.sort((a, b) => a.x - b.x);
-      lignes.push(fragments.map((f) => f.texte).join(' ').replace(/\s{2,}/g, '  '));
+      let ligne = fragments[0]?.texte ?? '';
+      for (let i = 1; i < fragments.length; i++) {
+        const precedent = fragments[i - 1];
+        const ecart = fragments[i].x - (precedent.x + precedent.largeur);
+        ligne += (ecart > SEUIL_COLONNE ? '\t' : ' ') + fragments[i].texte;
+      }
+      // Ne recompacte que les espaces normales : une tabulation de colonne
+      // ne doit jamais être avalée par ce nettoyage.
+      lignes.push(ligne.replace(/ {2,}/g, ' '));
     }
   }
 

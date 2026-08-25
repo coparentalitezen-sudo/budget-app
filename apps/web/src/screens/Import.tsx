@@ -4,6 +4,7 @@ import {
   analyserLignes, detecterFormat, versTransactions,
   type FormatDetecte, type LigneAnalysee,
 } from '../import/parseur.ts';
+import { analyserRelevePdf } from '../import/releve.ts';
 import { extraireTextePdf, recupererGoogleSheet } from '../import/sources.ts';
 import { detecterDoublons, type Suspicion } from '../db/doublons.ts';
 import { categoriserLot } from '../import/regles.ts';
@@ -17,8 +18,11 @@ type Source = 'csv_import' | 'google_sheet_import' | 'pdf_import';
 
 interface Apercu {
   source: Source;
-  format: FormatDetecte;
+  /** `null` pour un PDF : la notion de séparateur/entête ne s'y applique pas. */
+  format: FormatDetecte | null;
   lignes: LigneAnalysee[];
+  /** Lignes non transactionnelles écartées avant l'analyse (PDF uniquement). */
+  administratives: number;
   candidates: Transaction[];
   suspicions: Suspicion[];
   categorisees: number;
@@ -40,8 +44,23 @@ export function Import() {
     if (lignesBrutes.length === 0) throw new Error('Fichier vide.');
     if (!compte) throw new Error('Aucun compte courant configuré.');
 
-    const format = detecterFormat(lignesBrutes);
-    const lignes = analyserLignes(texte, format);
+    // Un relevé PDF n'est pas un CSV : en-têtes, pieds de page, numéros de
+    // page et texte commercial sont écartés AVANT l'analyse, et jamais
+    // comptés comme des lignes illisibles. Le CSV et le Google Sheet
+    // gardent le chemin tabulaire existant, inchangé.
+    let format: FormatDetecte | null;
+    let lignes: LigneAnalysee[];
+    let administratives = 0;
+    if (source === 'pdf_import') {
+      format = null;
+      const analyse = analyserRelevePdf(texte);
+      lignes = analyse.lignes;
+      administratives = analyse.administratives;
+    } else {
+      format = detecterFormat(lignesBrutes);
+      lignes = analyserLignes(texte, format);
+    }
+
     const brutes = versTransactions(lignes, compte.id, source);
 
     // Catégorisation automatique : les règles PROPOSENT une catégorie,
@@ -53,7 +72,7 @@ export function Import() {
     const { suspicions } = detecterDoublons(bilan.transactions, existantes);
 
     setApercu({
-      source, format, lignes,
+      source, format, lignes, administratives,
       candidates: bilan.transactions,
       suspicions,
       categorisees: bilan.categorisees,
@@ -158,31 +177,44 @@ export function Import() {
       {apercu && (
         <>
           <Carte titre="Format détecté">
-            <Ligne
-              libelle="Séparateur"
-              valeur={apercu.format.separateur === '\t' ? 'tabulation' : `« ${apercu.format.separateur} »`}
-            />
-            <Ligne
-              libelle="Entête"
-              valeur={apercu.format.enteteDetectee ? apercu.format.enteteDetectee.join(' | ') : 'aucune'}
-            />
-            <Ligne libelle="Lignes lues" valeur={String(apercu.lignes.length)} />
+            {apercu.format ? (
+              <>
+                <Ligne
+                  libelle="Séparateur"
+                  valeur={apercu.format.separateur === '\t' ? 'tabulation' : `« ${apercu.format.separateur} »`}
+                />
+                <Ligne
+                  libelle="Entête"
+                  valeur={apercu.format.enteteDetectee ? apercu.format.enteteDetectee.join(' | ') : 'aucune'}
+                />
+              </>
+            ) : (
+              <Ligne libelle="Format" valeur="Relevé PDF" />
+            )}
+            <Ligne libelle="Lignes lues" valeur={String(apercu.lignes.length + apercu.administratives)} />
             <Ligne libelle="Transactions exploitables" valeur={String(apercu.candidates.length)} />
+            {apercu.administratives > 0 && (
+              <Ligne libelle="Lignes administratives ignorées" valeur={String(apercu.administratives)} />
+            )}
             <Ligne libelle="Lignes illisibles" valeur={String(illisibles.length)} />
             <Ligne libelle="Doublons possibles" valeur={String(apercu.suspicions.length)} />
             <Ligne libelle="Catégorisées automatiquement" valeur={String(apercu.categorisees)} />
             <Ligne libelle="Sans catégorie" valeur={String(apercu.nonCategorisees)} />
             <p className="note">
-              Le séparateur, la virgule décimale et le format de date sont détectés sur
-              le contenu réel, jamais supposés. Vérifiez l’aperçu ci-dessous avant de
-              valider.
+              {apercu.format
+                ? 'Le séparateur, la virgule décimale et le format de date sont détectés ' +
+                  'sur le contenu réel, jamais supposés. '
+                : 'En-têtes, pieds de page, numéros de page et texte commercial sont ' +
+                  'reconnus et écartés automatiquement, sans compter comme illisibles. '}
+              Vérifiez l’aperçu ci-dessous avant de valider.
             </p>
           </Carte>
 
           {illisibles.length > 0 && (
-            <Carte titre={`Lignes écartées (${illisibles.length})`}>
+            <Carte titre={`Lignes réellement illisibles (${illisibles.length})`}>
               <p className="note note-attention">
-                Ces lignes sont écartées, jamais converties en montant nul.
+                Ces lignes ressemblent à des opérations mais n’ont pas pu être
+                interprétées ; elles sont écartées, jamais converties en montant nul.
               </p>
               {illisibles.slice(0, 5).map((l) => (
                 <div key={l.ligne} className="scenario">
