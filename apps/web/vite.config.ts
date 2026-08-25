@@ -33,6 +33,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Enregistrement manuel (voir main.tsx) : le script auto-injecté par
+      // défaut ne vérifie une mise à jour qu'au chargement de la page, ce
+      // qui suffit peu pour une PWA installée sur iPhone — iOS ne relance
+      // pas ce contrôle aussi fiablement qu'un onglet de navigateur classique.
+      injectRegister: false,
       includeAssets: ['icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'Budget',
