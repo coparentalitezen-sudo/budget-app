@@ -39,6 +39,10 @@ body {
   border-bottom: 1px solid var(--bordure);
 }
 .entete h1 { font-size: 17px; font-weight: 600; margin: 0; flex: 1; }
+.version-tag {
+  font-size: 10px; font-family: ui-monospace, monospace; color: var(--texte-doux);
+  opacity: 0.6;
+}
 
 .badge {
   font-size: 12px; padding: 3px 9px; border-radius: 999px;

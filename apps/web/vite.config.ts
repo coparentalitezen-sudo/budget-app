@@ -1,7 +1,31 @@
+import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+
+/**
+ * Identifiant de build, affiché dans l'app pour vérifier qu'un déploiement a
+ * bien pris effet (utile avec le cache agressif d'une PWA). Vercel fournit le
+ * SHA du commit en variable d'environnement ; en local, on le lit via git.
+ */
+function shaCourt(): string {
+  const sha = process.env.VERCEL_GIT_COMMIT_SHA;
+  if (sha) return sha.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'dev';
+  }
+}
+
+const APP_VERSION = shaCourt();
+const BUILD_TIME = new Date().toISOString();
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __BUILD_TIME__: JSON.stringify(BUILD_TIME),
+  },
   // Le moteur est résolu comme un vrai paquet du workspace (@budget/core),
   // et non par un alias propre au bundler : Vite, Node et TypeScript le
   // trouvent tous de la même façon, y compris pour les tests.

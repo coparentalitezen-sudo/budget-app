@@ -124,6 +124,11 @@ export function Parametres() {
           <button className="bouton" onClick={() => void deconnecter()}>Se déconnecter</button>
         )}
       </Carte>
+
+      <Carte titre="À propos">
+        <Ligne libelle="Version" valeur={__APP_VERSION__} />
+        <Ligne libelle="Construit le" valeur={new Date(__BUILD_TIME__).toLocaleString('fr-FR')} />
+      </Carte>
     </div>
   );
 }

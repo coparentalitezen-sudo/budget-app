@@ -77,6 +77,9 @@ function Application() {
     <div className="app">
       <header className="entete">
         <h1>Budget</h1>
+        <span className="version-tag" title={`Construit le ${new Date(__BUILD_TIME__).toLocaleString('fr-FR')}`}>
+          {__APP_VERSION__}
+        </span>
         {!enLigne && <span className="badge badge-hors-ligne">Hors ligne</span>}
         {enAttente > 0 && <span className="badge">{enAttente} en attente</span>}
       </header>
