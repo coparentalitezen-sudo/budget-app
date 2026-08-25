@@ -9,6 +9,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import { foyer2026 } from '../../packages/core/src/fixtures/foyer2026.ts';
+import { REGLES_INITIALES } from '../../apps/web/src/import/regles.ts';
 
 const uuid = (graine: string): string => {
   // UUID déterministe dérivé du nom : rejouer le seed est idempotent.
@@ -163,16 +164,17 @@ lignes.push(
 
 lignes.push('\n-- Règles de catégorisation initiales. Modifiables et supprimables');
 lignes.push('-- depuis l’écran Configuration : ce sont des valeurs de départ.');
-const REGLES: [string, string][] = [
-  ['LIDL', 'cat_courses'], ['CARREFOUR', 'cat_courses'], ['INTERMARCHE', 'cat_courses'],
-  ['FREE', 'cat_internet'], ['TOTALENERGIES', 'cat_electricite'], ['EDF', 'cat_electricite'],
-  ['BOUYGUES TELECOM', 'cat_telephone'], ['CARDIF', 'cat_assurance_habitation'],
-  ['TOTAL ACCESS', 'cat_essence'], ['PHARMACIE', 'cat_sante'],
-];
-for (const [motif, categorie] of REGLES) {
+lignes.push('-- Source unique : apps/web/src/import/regles.ts (REGLES_INITIALES).');
+for (const { motif, categorie } of REGLES_INITIALES) {
+  const cat = c.categories.find((cc) => cc.nom === categorie);
+  if (!cat) {
+    throw new Error(
+      `Règle "${motif}" : catégorie "${categorie}" introuvable dans la configuration foyer2026.`,
+    );
+  }
   lignes.push(
     `insert into public.categorization_rules (id, user_id, category_id, pattern, match_type, priority, auto_validate, is_active) values ` +
-      `('${uuid('regle_' + motif)}', :uid, '${uuid(categorie)}', ${s(motif)}, 'contains', 100, false, true) ` +
+      `('${uuid('regle_' + motif)}', :uid, '${uuid(cat.id)}', ${s(motif)}, 'contains', 100, false, true) ` +
       `on conflict (id) do update set pattern = excluded.pattern;`,
   );
 }
