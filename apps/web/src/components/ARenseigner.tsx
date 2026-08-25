@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Categorie, Transaction } from '@budget/core/src/types.ts';
-import { enregistrerTransaction } from '../db/dexie.ts';
+import { enregistrerTransaction, supprimerTransaction } from '../db/dexie.ts';
 import { enregistrerRegle } from '../db/configuration.ts';
 import { motifDepuisLibelle } from '../import/regles.ts';
 import { Carte, Etiquette } from './ui.tsx';
@@ -33,6 +33,17 @@ export function OperationARenseigner({
   const [motif, setMotif] = useState(() => motifDepuisLibelle(libelle));
   const [enCours, setEnCours] = useState(false);
   const [avertissement, setAvertissement] = useState<string | null>(null);
+
+  const supprimer = async () => {
+    if (!window.confirm(`Supprimer « ${libelle || 'cette opération'} » ?`)) return;
+    setEnCours(true);
+    try {
+      await supprimerTransaction(transaction.id);
+      onTraitee();
+    } finally {
+      setEnCours(false);
+    }
+  };
 
   const valider = async () => {
     if (categorieId === '') return;
@@ -138,6 +149,9 @@ export function OperationARenseigner({
           {enCours ? 'Enregistrement…' : 'Valider'}
         </button>
       </div>
+      <button className="lien lien-detail" disabled={enCours} onClick={() => void supprimer()}>
+        Supprimer cette opération
+      </button>
     </Carte>
   );
 }

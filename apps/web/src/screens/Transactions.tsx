@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { periodeDe } from '@budget/core/src/periode.ts';
-import type { StatutTransaction, TypeTransaction } from '@budget/core/src/types.ts';
+import type { SourceTransaction, StatutTransaction, TypeTransaction } from '@budget/core/src/types.ts';
 import { empreinte } from '../db/doublons.ts';
 import { chargerRegles } from '../db/configuration.ts';
-import { enregistrerTransaction } from '../db/dexie.ts';
+import { enregistrerTransaction, supprimerTransaction } from '../db/dexie.ts';
 import { categoriserLot } from '../import/regles.ts';
 import { Carte, Etiquette, Vide } from '../components/ui.tsx';
 import { OperationARenseigner } from '../components/ARenseigner.tsx';
@@ -13,6 +13,14 @@ import { useConfiguration, useTransactions } from '../state/useDonnees.ts';
 const TYPES: (TypeTransaction | 'tous')[] = [
   'tous', 'depense', 'revenu', 'facture', 'remboursement', 'epargne', 'transfert',
 ];
+
+const LIBELLE_SOURCE: Record<SourceTransaction, string> = {
+  manual: 'Saisie manuelle',
+  csv_import: 'Import CSV',
+  pdf_import: 'Import PDF',
+  bank_api: 'Banque',
+  google_sheet_import: 'Google Sheet',
+};
 
 /** Une opération importée sans catégorie fiable, en attente de décision. */
 export const estARenseigner = (t: { categorieId: string | null; statut: string }) =>
@@ -27,11 +35,28 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
   const [type, setType] = useState<TypeTransaction | 'tous'>('tous');
   const [statut, setStatut] = useState<StatutTransaction | 'tous'>('tous');
   const [categorieId, setCategorieId] = useState<string>('toutes');
+  const [source, setSource] = useState<SourceTransaction | 'toutes'>('toutes');
   const [enCoursRecat, setEnCoursRecat] = useState(false);
   const [resultatRecat, setResultatRecat] = useState<string | null>(null);
+  const [suppressionEnCours, setSuppressionEnCours] = useState<string | null>(null);
 
   const nomCategorie = (id: string | null) =>
     config.categories.find((c) => c.id === id)?.nom ?? 'Non catégorisé';
+
+  /**
+   * Suppression LOGIQUE (voir `supprimerTransaction`) : la ligne disparaît
+   * localement, mais reste tracée côté serveur (`deleted_at`). Confirmée
+   * explicitement — c'est la seule action destructrice de cet écran.
+   */
+  const supprimer = async (id: string, libelle: string) => {
+    if (!window.confirm(`Supprimer « ${libelle || 'cette opération'} » ?`)) return;
+    setSuppressionEnCours(id);
+    try {
+      await supprimerTransaction(id);
+    } finally {
+      setSuppressionEnCours(null);
+    }
+  };
 
   // Les doublons sont SIGNALÉS, jamais masqués ni supprimés.
   const empreintesMultiples = useMemo(() => {
@@ -49,6 +74,7 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
       .filter((t) => (type === 'tous' ? true : t.type === type))
       .filter((t) => (statut === 'tous' ? true : t.statut === statut))
       .filter((t) => (categorieId === 'toutes' ? true : t.categorieId === categorieId))
+      .filter((t) => (source === 'toutes' ? true : t.source === source))
       .filter((t) =>
         terme === ''
           ? true
@@ -57,7 +83,7 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
               .some((v) => v!.toLowerCase().includes(terme)),
       )
       .sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [transactions, recherche, type, statut, categorieId]);
+  }, [transactions, recherche, type, statut, categorieId, source]);
 
   const parJour = useMemo(() => {
     const groupes = new Map<string, typeof filtrees>();
@@ -171,6 +197,12 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
             <option key={c.id} value={c.id}>{c.nom}</option>
           ))}
         </select>
+        <select value={source} onChange={(e) => setSource(e.target.value as typeof source)}>
+          <option value="toutes">Toutes provenances</option>
+          {(Object.keys(LIBELLE_SOURCE) as SourceTransaction[]).map((s) => (
+            <option key={s} value={s}>{LIBELLE_SOURCE[s]}</option>
+          ))}
+        </select>
       </div>
 
       <p className="compteur">
@@ -204,8 +236,15 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
                   <Etiquette ton={t.statut === 'pending' ? 'attente' : 'ok'}>
                     {t.statut === 'pending' ? 'En attente' : 'Validée'}
                   </Etiquette>
-                  <Etiquette>{t.source}</Etiquette>
+                  <Etiquette>{LIBELLE_SOURCE[t.source]}</Etiquette>
                   {suspect && <Etiquette ton="doublon">Doublon possible</Etiquette>}
+                  <button
+                    className="lien lien-detail"
+                    disabled={suppressionEnCours === t.id}
+                    onClick={() => void supprimer(t.id, t.commercant ?? t.description ?? '')}
+                  >
+                    {suppressionEnCours === t.id ? 'Suppression…' : 'Supprimer'}
+                  </button>
                 </div>
               </div>
             );

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Transaction } from '@budget/core/src/types.ts';
 import {
   analyserLignes, detecterFormat, versTransactions,
@@ -9,12 +9,21 @@ import { extraireTextePdf, recupererGoogleSheet } from '../import/sources.ts';
 import { detecterDoublons, type Suspicion } from '../db/doublons.ts';
 import { categoriserLot } from '../import/regles.ts';
 import { chargerRegles } from '../db/configuration.ts';
-import { db, enregistrerTransaction } from '../db/dexie.ts';
+import { db, ecrireMeta, enregistrerTransaction, lireMeta, supprimerTransaction } from '../db/dexie.ts';
 import { Carte, Etiquette, Ligne } from '../components/ui.tsx';
 import { dateCourte, montant } from '../lib/format.ts';
 import { useConfiguration } from '../state/useDonnees.ts';
 
 type Source = 'csv_import' | 'google_sheet_import' | 'pdf_import';
+
+const CLE_DERNIER_IMPORT = 'dernier_import';
+
+interface DernierImport {
+  ids: string[];
+  nombre: number;
+  quand: string;
+  source: Source;
+}
 
 interface Apercu {
   source: Source;
@@ -36,6 +45,12 @@ export function Import() {
   const [urlSheet, setUrlSheet] = useState('');
   const [occupe, setOccupe] = useState(false);
   const [resultat, setResultat] = useState<string | null>(null);
+  const [dernierImport, setDernierImport] = useState<DernierImport | null>(null);
+  const [annulationEnCours, setAnnulationEnCours] = useState(false);
+
+  useEffect(() => {
+    void lireMeta<DernierImport | null>(CLE_DERNIER_IMPORT, null).then(setDernierImport);
+  }, []);
 
   const compte = config.comptes.find((c) => c.type === 'courant');
 
@@ -107,7 +122,44 @@ export function Import() {
         `. Toutes restent en attente de validation ; retrouvez celles à renseigner ` +
         `sur l’accueil ou dans Opérations.`,
     );
+    // Mémorisé localement (pas de nouvelle table) pour permettre d'annuler
+    // tout l'import en un geste, tant qu'aucun autre import n'a eu lieu depuis.
+    const enregistrement: DernierImport = {
+      ids: apercu.candidates.map((t) => t.id),
+      nombre: apercu.candidates.length,
+      quand: new Date().toISOString(),
+      source: apercu.source,
+    };
+    await ecrireMeta(CLE_DERNIER_IMPORT, enregistrement);
+    setDernierImport(enregistrement);
     setApercu(null);
+  };
+
+  /**
+   * Annule tout l'import précédent : supprime les opérations une à une
+   * (suppression LOGIQUE, voir `supprimerTransaction`), rien n'est perdu
+   * côté serveur. Ne fonctionne que pour le DERNIER import — au-delà,
+   * les opérations se suppriment individuellement depuis Opérations.
+   */
+  const annulerDernierImport = async () => {
+    if (!dernierImport) return;
+    if (
+      !window.confirm(
+        `Annuler tout le dernier import (${dernierImport.nombre} opération(s)) ? ` +
+          `Celles déjà validées ou modifiées seront supprimées aussi.`,
+      )
+    ) {
+      return;
+    }
+    setAnnulationEnCours(true);
+    try {
+      for (const id of dernierImport.ids) await supprimerTransaction(id);
+      await ecrireMeta(CLE_DERNIER_IMPORT, null);
+      setDernierImport(null);
+      setResultat(`Import annulé : ${dernierImport.nombre} opération(s) supprimée(s).`);
+    } finally {
+      setAnnulationEnCours(false);
+    }
   };
 
   const illisibles = apercu?.lignes.filter((l) => l.erreur) ?? [];
@@ -173,6 +225,22 @@ export function Import() {
 
         {erreur && <p className="note note-attention">{erreur}</p>}
         {resultat && <p className="note">{resultat}</p>}
+
+        {dernierImport && (
+          <>
+            <p className="note">
+              Dernier import : {dernierImport.nombre} opération(s) le{' '}
+              {new Date(dernierImport.quand).toLocaleString('fr-FR')}.
+            </p>
+            <button
+              className="bouton"
+              disabled={annulationEnCours}
+              onClick={() => void annulerDernierImport()}
+            >
+              {annulationEnCours ? 'Annulation…' : `Annuler cet import (${dernierImport.nombre})`}
+            </button>
+          </>
+        )}
       </Carte>
 
       {apercu && (
