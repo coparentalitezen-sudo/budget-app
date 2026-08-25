@@ -17,7 +17,7 @@ export function Parametres() {
   const [enCours, setEnCours] = useState(false);
 
   const inconnues = inventaireInconnues(config);
-  const { email: courriel, deconnecter } = useSession();
+  const { email: courriel, deconnecter, modeLocal } = useSession();
 
   const lancerSync = async () => {
     setEnCours(true);
@@ -113,7 +113,13 @@ export function Parametres() {
       </Carte>
 
       <Carte titre="Session">
-        <Ligne libelle="Compte" valeur={courriel ?? 'Non connecté'} />
+        <Ligne libelle="Compte" valeur={courriel ?? (modeLocal ? 'Mode local' : 'Non connecté')} />
+        {!courriel && (
+          <p className="note">
+            Sans compte, vos données restent sur cet appareil. Créez-en un quand vous
+            voulez : les saisies déjà faites partiront à la première synchronisation.
+          </p>
+        )}
         {courriel && (
           <button className="bouton" onClick={() => void deconnecter()}>Se déconnecter</button>
         )}

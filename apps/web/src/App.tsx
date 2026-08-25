@@ -45,7 +45,7 @@ function Application() {
   const [vueTransactions, setVueTransactions] = useState<'a_renseigner' | undefined>(undefined);
   const [enLigne, setEnLigne] = useState(navigator.onLine);
   const enAttente = useOutboxCount();
-  const { userId, pret } = useSession();
+  const { userId, pret, modeLocal } = useSession();
 
   useEffect(() => {
     const majEtat = () => setEnLigne(navigator.onLine);
@@ -61,7 +61,8 @@ function Application() {
 
   // Tant que Supabase n'est pas configuré, l'application reste pleinement
   // utilisable en local : la connexion n'est exigée que pour synchroniser.
-  const connexionRequise = supabaseConfigure && pret && !userId;
+  // La connexion n'est jamais imposée : l'application fonctionne en local.
+  const connexionRequise = supabaseConfigure && pret && !userId && !modeLocal;
 
   if (connexionRequise) {
     return (
