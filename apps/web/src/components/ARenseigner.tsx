@@ -25,7 +25,11 @@ export function OperationARenseigner({
 }) {
   const libelle = transaction.commercant ?? transaction.description ?? '';
   const [categorieId, setCategorieId] = useState('');
-  const [creerRegle, setCreerRegle] = useState(false);
+  // Coché par défaut : classer une opération doit enrichir la base de règles
+  // pour que ce commerçant ne redevienne pas « à renseigner » le mois
+  // suivant. Reste décochable pour un achat ponctuel qu'on ne veut pas
+  // généraliser — la décision reste toujours modifiable par l'utilisateur.
+  const [creerRegle, setCreerRegle] = useState(true);
   const [motif, setMotif] = useState(() => motifDepuisLibelle(libelle));
   const [enCours, setEnCours] = useState(false);
   const [avertissement, setAvertissement] = useState<string | null>(null);
