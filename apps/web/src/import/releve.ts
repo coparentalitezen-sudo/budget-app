@@ -91,14 +91,22 @@ const MOTIFS_ADMINISTRATIFS: RegExp[] = [
   // Période du relevé
   /\bdu\s+\d{1,2}\s+[a-zA-ZÀ-ÿ]+\s+\d{4}\s+au\s+\d{1,2}\s+[a-zA-ZÀ-ÿ]+\s+\d{4}/i,
   // Coordonnées bancaires
-  /\biban\b|\bbic\b/i,
+  /\biban\b|\bbic\b|\brib\b/i,
   /^[a-z]{2}\d{2}[\d\s]{10,}$/i, // IBAN au format FRxx ....
   /^\d{4,6}(\s+\d{4,6}){1,4}\s*$/, // suites de codes numériques (guichet, agence...)
   /^(code\s*guichet|code\s*banque|n°?\s*de\s*compte|num[ée]ro\s*de\s*compte|titulaire\s*:?|adresse\s*:|agence\b)/i,
   // Titres / en-têtes de document
-  /^(relev[ée]\s*(de|d['’])?\s*(compte|op[ée]rations)|extrait\s*de\s*compte)/i,
-  // Ligne d'entête du tableau d'opérations (répétée en haut de chaque page)
+  /^(relev[ée]\s*(de|d['’])?\s*(compte(\s*ch[èe]ques?)?|op[ée]rations)|extrait\s*de\s*compte)/i,
+  /^compte\s*ch[èe]ques?\b/i,
+  // Ligne d'entête du tableau d'opérations (répétée en haut de chaque page),
+  // reconnue même fragmentée en plusieurs lignes ou colonnes isolées.
   /^date\b.*(libell[ée]|nature|op[ée]ration).*(d[ée]bit|cr[ée]dit|montant)/i,
+  /^date\s*(de\s*)?(valeur|op[ée]ration)\s*$/i,
+  /^nature\s*(des\s*)?op[ée]rations?\s*$/i,
+  /^(libell[ée]|d[ée]signation)\s*(de\s*l['’]op[ée]ration)?\s*$/i,
+  /^d[ée]bit\s*$/i,
+  /^cr[ée]dit\s*$/i,
+  /^d[ée]bit\s+cr[ée]dit\s*$/i,
   // Soldes non transactionnels
   /^(ancien|nouveau)\s+solde/i,
   /\bsolde\s+(interm[ée]diaire|progressif|au\s+\d|cr[ée]diteur|d[ée]biteur|initial|final)\b/i,

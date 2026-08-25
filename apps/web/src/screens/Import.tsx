@@ -100,11 +100,12 @@ export function Import() {
     // deux dépenses identiques le même jour sont parfois bien réelles.
     for (const t of apercu.candidates) await enregistrerTransaction(t);
     setResultat(
-      `${apercu.candidates.length} transaction(s) importée(s) en attente de validation, ` +
-        `dont ${apercu.categorisees} catégorisée(s) automatiquement et ` +
-        `${apercu.suspicions.length} doublon(s) possible(s) signalé(s). ` +
-        `${apercu.nonCategorisees} opération(s) sont à renseigner : ` +
-        `retrouvez-les sur l’accueil ou dans Opérations.`,
+      `${apercu.candidates.length} opération(s) importée(s) · ` +
+        `${apercu.categorisees} classée(s) automatiquement · ` +
+        `${apercu.nonCategorisees} à renseigner` +
+        (apercu.suspicions.length > 0 ? ` · ${apercu.suspicions.length} doublon(s) possible(s) signalé(s)` : '') +
+        `. Toutes restent en attente de validation ; retrouvez celles à renseigner ` +
+        `sur l’accueil ou dans Opérations.`,
     );
     setApercu(null);
   };

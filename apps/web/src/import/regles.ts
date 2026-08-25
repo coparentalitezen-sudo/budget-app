@@ -142,42 +142,109 @@ export function categoriserLot(
  * (électricité). Les motifs par défaut sont donc volontairement longs.
  */
 export const REGLES_INITIALES: { motif: string; categorie: string; commentaire?: string }[] = [
+  // --- Courses --------------------------------------------------------
   { motif: 'LIDL', categorie: 'Courses' },
   { motif: 'CARREFOUR', categorie: 'Courses' },
   { motif: 'INTERMARCHE', categorie: 'Courses' },
+  { motif: 'ALDI', categorie: 'Courses' },
+  { motif: 'E.LECLERC', categorie: 'Courses' },
+  { motif: 'LECLERC', categorie: 'Courses' },
+  { motif: 'AUCHAN', categorie: 'Courses' },
+  { motif: 'MONOPRIX', categorie: 'Courses' },
+  { motif: 'FRANPRIX', categorie: 'Courses' },
+  { motif: 'CASINO', categorie: 'Courses', commentaire: 'Enseigne « Casino » : le motif ne capte pas les jeux d’argent, absents des relevés courants.' },
+  { motif: 'PICARD', categorie: 'Courses' },
+
+  // --- Téléphone / Internet --------------------------------------------
+  // FREE seul (Freebox) reste Internet ; FREE MOBILE, plus spécifique, est
+  // départagé par sa longueur (voir `categoriser` : motif le plus long
+  // gagne à priorité égale), donc essayé avant.
   { motif: 'FREE', categorie: 'Internet / TV' },
+  { motif: 'FREE MOBILE', categorie: 'Téléphone' },
+  { motif: 'SOSH', categorie: 'Téléphone' },
+  { motif: 'ORANGE', categorie: 'Téléphone' },
+  { motif: 'SFR', categorie: 'Téléphone' },
+  { motif: 'BOUYGUES TELECOM', categorie: 'Téléphone' },
+
+  // --- Énergie ----------------------------------------------------------
+  { motif: 'EDF', categorie: 'Électricité' },
+  { motif: 'ENGIE', categorie: 'Électricité', commentaire: 'Pas de catégorie « Gaz » distincte dans cette configuration.' },
   {
     motif: 'TOTALENERGIES',
     categorie: 'Électricité',
     commentaire: 'Motif complet : « TOTAL » seul attraperait aussi les stations-service.',
   },
-  { motif: 'EDF', categorie: 'Électricité' },
-  { motif: 'BOUYGUES TELECOM', categorie: 'Téléphone' },
-  { motif: 'CARDIF', categorie: 'Assurance habitation' },
+
+  // --- Transport / voiture (stations-service uniquement : voir note ----
+  // en bas de fichier pour Uber/SNCF/RATP, volontairement absents) -------
   { motif: 'TOTAL ACCESS', categorie: 'Essence / voiture' },
+  { motif: 'ESSO', categorie: 'Essence / voiture' },
+  { motif: 'SHELL', categorie: 'Essence / voiture' },
+  { motif: 'STATION BP', categorie: 'Essence / voiture', commentaire: '« BP » seul est trop court et trop ambigu pour un motif fiable.' },
+  { motif: 'AVIA', categorie: 'Essence / voiture' },
+
+  // --- Santé --------------------------------------------------------
   { motif: 'PHARMACIE', categorie: 'Santé' },
+  { motif: 'DOCTOLIB', categorie: 'Santé' },
+
+  // --- Assurance (déjà présent) -----------------------------------------
+  { motif: 'CARDIF', categorie: 'Assurance habitation' },
+
+  // --- Abonnements de loisirs numériques ---------------------------------
+  // « Divers / achats plaisir » est la catégorie existante la plus proche
+  // d’un abonnement de loisir sans y forcer « Sorties / loisirs », qui
+  // désigne plutôt des sorties ponctuelles (restaurants, activités).
+  { motif: 'NETFLIX', categorie: 'Divers / achats plaisir' },
+  { motif: 'SPOTIFY', categorie: 'Divers / achats plaisir' },
+  // AMAZON PRIME, APPLE.COM/BILL, GOOGLE, MICROSOFT : volontairement
+  // absents. Trop génériques (Google/Microsoft facturent aussi bien des
+  // achats ponctuels que des abonnements) ou trop ambigus (Amazon Prime
+  // mêle livraison et vidéo) pour un motif fiable — laissés à renseigner
+  // plutôt que catégorisés au hasard.
 ];
 
 /**
- * Propose un motif de règle à partir d'un libellé bancaire brut.
+ * Règles structurelles volontairement NON créées, et pourquoi.
  *
- * Un libellé de relevé ressemble à « PAIEMENT CB 04/09 CARREFOUR MARKET 1234 ».
- * L'utiliser tel quel comme motif `contains` produirait une règle qui ne
- * correspondrait plus jamais : la date et le numéro de carte changent à chaque
- * opération. On retire donc les parties volatiles et on garde les mots
- * significatifs.
+ * « PRLV SEPA », « VIR »/« VIREMENT », « RETRAIT DAB » et les frais
+ * bancaires sont des structures d'opération, pas des enseignes : un
+ * prélèvement SEPA peut aller vers n'importe quelle catégorie selon le
+ * bénéficiaire, un virement peut être un revenu ou une épargne. Le nettoyage
+ * du libellé (`nettoyerCommercant`) retire déjà ces mentions pour faire
+ * ressortir le vrai bénéficiaire, qui est alors catégorisé par son propre
+ * motif (ex. PAYPAL). Créer une règle sur le motif structurel lui-même
+ * produirait de mauvaises catégories en masse plutôt que de vraies
+ * correspondances — l'objectif « mieux vaut à renseigner qu'une mauvaise
+ * catégorie » l'interdit explicitement.
  *
- * Le résultat reste MODIFIABLE par l'utilisateur avant enregistrement : c'est
- * une proposition, pas une décision.
+ * Pour la même raison, PAYPAL n'a pas de règle de catégorie : c'est un
+ * intermédiaire de paiement, pas un type de dépense. Le nettoyage du
+ * libellé fait déjà ressortir « PAYPAL EUROPE » comme commerçant lisible ;
+ * lui attribuer une catégorie serait deviner ce qui a été acheté.
+ *
+ * « RETRAIT DAB » (retrait espèces) et les frais bancaires n'ont pas de
+ * catégorie dédiée dans cette configuration : aucune règle n'est créée
+ * pour eux non plus, conformément à la consigne « si aucune catégorie
+ * cohérente n'existe, laisser non catégorisé ».
+ */
+
+/**
+ * Nettoyage d'un libellé bancaire brut, ex. « PRLV SEPA PAYPAL EUROPE
+ * S.A.R.L. ... REF/123456 » ou « PAIEMENT CB 04/09 CARREFOUR MARKET 1234 ».
+ * Les parties volatiles (mention du moyen de paiement, dates, numéros de
+ * carte, références, formes juridiques) changent à chaque opération et ne
+ * doivent jamais entrer dans un motif de règle ni dans le commerçant
+ * affiché — seuls les mots significatifs sont retenus.
  */
 const MOTS_OUTILS = new Set([
   'PAIEMENT', 'PAIMENT', 'CB', 'CARTE', 'ACHAT', 'PRLV', 'PRELEVEMENT',
   'VIREMENT', 'VIR', 'FACTURE', 'DU', 'DE', 'LE', 'LA', 'DEBIT', 'CREDIT',
-  'SEPA', 'RETRAIT', 'DAB', 'ECH', 'REF',
+  'SEPA', 'RETRAIT', 'DAB', 'ECH', 'REF', 'SARL', 'SAS', 'EURL',
+  'COM', 'WWW', 'NET', 'ORG', 'FR', 'HTTP', 'HTTPS',
 ]);
 
-export function motifDepuisLibelle(libelle: string): string {
-  const mots = normaliser(libelle)
+function motsSignificatifs(libelle: string): string[] {
+  return normaliser(libelle)
     .split(/[^A-Z0-9]+/)
     .filter((mot) => {
       if (mot.length < 3) return false;
@@ -186,9 +253,32 @@ export function motifDepuisLibelle(libelle: string): string {
       if (/^\d+$/.test(mot)) return false;
       return true;
     });
+}
 
+/**
+ * Propose un motif de règle à partir d'un libellé bancaire brut.
+ *
+ * Le résultat reste MODIFIABLE par l'utilisateur avant enregistrement : c'est
+ * une proposition, pas une décision.
+ */
+export function motifDepuisLibelle(libelle: string): string {
+  const mots = motsSignificatifs(libelle);
   // Deux mots suffisent presque toujours à identifier une enseigne
   // (« CARREFOUR MARKET »), et restent assez larges pour capter ses variantes.
   const retenus = mots.slice(0, 2).join(' ');
   return retenus !== '' ? retenus : normaliser(libelle).slice(0, 30);
+}
+
+/**
+ * Nettoie un libellé pour en faire un nom de commerçant lisible, affiché et
+ * stocké sur la transaction. Contrairement à `motifDepuisLibelle`, le
+ * résultat n'est PAS tronqué à deux mots — un motif de règle doit rester
+ * court pour matcher fiablement, un commerçant affiché doit rester
+ * reconnaissable dans son intégralité (« BOULANGERIE PAUL SAINT GERMAIN »
+ * ne doit pas devenir « BOULANGERIE PAUL »).
+ */
+export function nettoyerCommercant(libelle: string): string {
+  const mots = motsSignificatifs(libelle);
+  const retenus = mots.join(' ');
+  return retenus !== '' ? retenus : normaliser(libelle).trim();
 }

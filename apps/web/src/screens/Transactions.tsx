@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react';
 import { periodeDe } from '@budget/core/src/periode.ts';
 import type { StatutTransaction, TypeTransaction } from '@budget/core/src/types.ts';
 import { empreinte } from '../db/doublons.ts';
+import { chargerRegles } from '../db/configuration.ts';
+import { enregistrerTransaction } from '../db/dexie.ts';
+import { categoriserLot } from '../import/regles.ts';
 import { Carte, Etiquette, Vide } from '../components/ui.tsx';
 import { OperationARenseigner } from '../components/ARenseigner.tsx';
 import { dateCourte, montant } from '../lib/format.ts';
@@ -24,6 +27,8 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
   const [type, setType] = useState<TypeTransaction | 'tous'>('tous');
   const [statut, setStatut] = useState<StatutTransaction | 'tous'>('tous');
   const [categorieId, setCategorieId] = useState<string>('toutes');
+  const [enCoursRecat, setEnCoursRecat] = useState(false);
+  const [resultatRecat, setResultatRecat] = useState<string | null>(null);
 
   const nomCategorie = (id: string | null) =>
     config.categories.find((c) => c.id === id)?.nom ?? 'Non catégorisé';
@@ -67,6 +72,31 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
   const aRenseigner = transactions.filter(estARenseigner);
   const aTraiter = aRenseigner.filter((t) => !reportees.includes(t.id));
 
+  /**
+   * Réapplique les règles de catégorisation ACTUELLES aux opérations déjà
+   * importées mais restées sans catégorie — utile après avoir ajouté une
+   * règle (import précédent avec un socle de règles trop restreint, ou
+   * nouvelle règle créée depuis Configuration). Une transaction déjà
+   * catégorisée n'est jamais touchée : `categoriser` s'y refuse déjà.
+   */
+  const recategoriser = async () => {
+    setEnCoursRecat(true);
+    setResultatRecat(null);
+    try {
+      const regles = await chargerRegles();
+      const bilan = categoriserLot(aRenseigner, regles);
+      const reclassees = bilan.transactions.filter((t) => t.categorieId !== null);
+      for (const t of reclassees) await enregistrerTransaction(t);
+      setResultatRecat(
+        reclassees.length > 0
+          ? `${reclassees.length} opération(s) reclassée(s) automatiquement.`
+          : 'Aucune correspondance trouvée avec les règles actuelles.',
+      );
+    } finally {
+      setEnCoursRecat(false);
+    }
+  };
+
   if (vue === 'a_renseigner') {
     return (
       <div className="ecran">
@@ -75,6 +105,12 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
             Ces opérations ont été importées sans catégorie fiable. Classez-les
             pour qu’elles entrent dans votre budget. « Plus tard » les laisse ici.
           </p>
+          {aRenseigner.length > 0 && (
+            <button className="bouton" onClick={() => void recategoriser()} disabled={enCoursRecat}>
+              {enCoursRecat ? 'Reclassement…' : 'Recatégoriser avec les règles actuelles'}
+            </button>
+          )}
+          {resultatRecat && <p className="note">{resultatRecat}</p>}
           <button className="bouton" onClick={() => setVue('toutes')}>
             Revenir à toutes les opérations
           </button>

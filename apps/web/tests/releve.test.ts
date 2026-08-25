@@ -175,3 +175,34 @@ describe('Colonne Solde non confondue avec le montant', () => {
     assert.equal(lignes[0].sens, 'debit');
   });
 });
+
+describe('Libellé jamais pollué par du texte d’en-tête ou de pied de page', () => {
+  test('RELEVE DE COMPTE CHEQUES, RIB, Date Valeur, Nature des opérations, Débit Crédit sont écartés', () => {
+    const texte = [
+      'RELEVE DE COMPTE CHEQUES',
+      'RIB',
+      'Date Valeur',
+      'Nature des opérations',
+      'Débit Crédit',
+      '15/06/2026\tPRLV SEPA PAYPAL EUROPE S.A.R.L.\t45,00\t',
+    ].join('\n');
+    const { lignes, administratives } = analyserRelevePdf(texte);
+    assert.equal(administratives, 5);
+    assert.equal(lignes.length, 1);
+    assert.doesNotMatch(lignes[0].libelle, /RELEVE|CHEQUES|\bRIB\b|VALEUR|NATURE|OPERATIONS/i);
+    assert.match(lignes[0].libelle, /PAYPAL/i);
+  });
+
+  test('ces mêmes fragments après une opération ne sont pas fusionnés dans son libellé', () => {
+    const texte = [
+      '15/06/2026\tPRLV SEPA PAYPAL EUROPE S.A.R.L.\t45,00\t',
+      'RELEVE DE COMPTE CHEQUES',
+      'RIB',
+      'Nature des opérations',
+    ].join('\n');
+    const { lignes, administratives } = analyserRelevePdf(texte);
+    assert.equal(administratives, 3);
+    assert.equal(lignes.length, 1);
+    assert.doesNotMatch(lignes[0].libelle, /RELEVE|CHEQUES|\bRIB\b|NATURE|OPERATIONS/i);
+  });
+});

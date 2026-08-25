@@ -1,5 +1,6 @@
 import { round, type Cents } from '@budget/core/src/money.ts';
 import type { Transaction } from '@budget/core/src/types.ts';
+import { nettoyerCommercant } from './regles.ts';
 
 /**
  * Analyse de relevés tabulaires (CSV, export Google Sheet, texte de PDF).
@@ -250,8 +251,12 @@ export function versTransactions(
       type: l.sens === 'credit' ? ('revenu' as const) : ('depense' as const),
       categorieId: null,
       compteId,
+      // Le libellé complet reste en description (contexte utile), tandis
+      // que le commerçant est nettoyé des mentions techniques (moyen de
+      // paiement, références, formes juridiques) — c'est lui que les
+      // règles de catégorisation comparent, et lui qui s'affiche.
       description: l.libelle,
-      commercant: l.libelle,
+      commercant: nettoyerCommercant(l.libelle),
       source,
       // Import = toujours `pending` : rien n'entre dans les comptes sans
       // un regard humain, surtout sans catégorie attribuée.

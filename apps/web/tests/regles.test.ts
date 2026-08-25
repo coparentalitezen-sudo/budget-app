@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   categoriser, categoriserLot, normaliser, regleCorrespond,
-  motifDepuisLibelle, REGLES_INITIALES, type RegleCategorisation,
+  motifDepuisLibelle, nettoyerCommercant, REGLES_INITIALES, type RegleCategorisation,
 } from '../src/import/regles.ts';
 import type { Transaction } from '@budget/core/src/types.ts';
 
@@ -157,5 +157,110 @@ describe('Motif proposé à partir d’un libellé brut', () => {
 
   test('un libellé sans mot exploitable ne produit pas un motif vide', () => {
     assert.notEqual(motifDepuisLibelle('CB 04/09 1234'), '');
+  });
+});
+
+describe('Nettoyage du commerçant (versTransactions, import PDF/CSV)', () => {
+  test('un prélèvement PayPal donne un commerçant lisible, sans forme juridique ni référence', () => {
+    assert.equal(
+      nettoyerCommercant('PRLV SEPA PAYPAL EUROPE S.A.R.L. ... REF/123456'),
+      'PAYPAL EUROPE',
+    );
+  });
+
+  test('les fragments de domaine (.com) sont retirés comme les autres parties volatiles', () => {
+    assert.equal(nettoyerCommercant('PRLV SEPA NETFLIX.COM REF/987654'), 'NETFLIX');
+  });
+
+  test('contrairement à motifDepuisLibelle, le commerçant n’est PAS tronqué à deux mots', () => {
+    assert.equal(
+      nettoyerCommercant('CB BOULANGERIE PAUL SAINT GERMAIN 04/09'),
+      'BOULANGERIE PAUL SAINT GERMAIN',
+    );
+  });
+
+  test('des références différentes produisent le même commerçant nettoyé', () => {
+    const a = nettoyerCommercant('PRLV SEPA PAYPAL EUROPE S.A.R.L. ... REF/111111');
+    const b = nettoyerCommercant('PRLV SEPA PAYPAL EUROPE S.A.R.L. ... REF/222222');
+    assert.equal(a, b);
+    assert.equal(a, 'PAYPAL EUROPE');
+  });
+});
+
+/** Construit les règles à partir du socle par défaut, pour tester le pipeline réel. */
+function reglesDepuisInitiales(): RegleCategorisation[] {
+  return REGLES_INITIALES.map((r, i) => ({
+    id: `initiale_${i}`,
+    motif: r.motif,
+    typeCorrespondance: 'contains' as const,
+    categorieId: r.categorie,
+    priorite: 100,
+    autoValider: false,
+    active: true,
+  }));
+}
+
+describe('Pipeline réel : libellé PDF brut -> commerçant nettoyé -> catégorie', () => {
+  const regles = reglesDepuisInitiales();
+
+  const classer = (libelleBrut: string) => {
+    const commercant = nettoyerCommercant(libelleBrut);
+    const { transaction: t } = categoriser(transaction(commercant), regles);
+    return { commercant, categorieId: t.categorieId };
+  };
+
+  test('CARREFOUR classé en Courses', () => {
+    assert.equal(classer('PAIEMENT CB 04/09 CARREFOUR MARKET PARIS 1234').categorieId, 'Courses');
+  });
+
+  test('LIDL classé en Courses', () => {
+    assert.equal(classer('CB LIDL PARIS 15 04/09').categorieId, 'Courses');
+  });
+
+  test('NETFLIX classé en Divers / achats plaisir', () => {
+    assert.equal(classer('PRLV SEPA NETFLIX.COM REF/987654').categorieId, 'Divers / achats plaisir');
+  });
+
+  test('FREE (Freebox) et FREE MOBILE ne se confondent pas', () => {
+    assert.equal(classer('PRLV SEPA FREE MOBILE REF/1122').categorieId, 'Téléphone');
+    assert.equal(classer('PRLV SEPA FREE REF/3344').categorieId, 'Internet / TV');
+  });
+
+  test('EDF classé en Électricité', () => {
+    assert.equal(classer('PRLV SEPA EDF REF/5566').categorieId, 'Électricité');
+  });
+
+  test('PayPal : commerçant nettoyé, mais jamais catégorisé au hasard', () => {
+    const r = classer('PRLV SEPA PAYPAL EUROPE S.A.R.L. ... REF/123456');
+    assert.equal(r.commercant, 'PAYPAL EUROPE');
+    assert.equal(r.categorieId, null, 'PayPal ne dit rien de ce qui a été acheté : aucune catégorie ne doit être devinée');
+  });
+
+  test('UBER : aucune catégorie transport cohérente n’existe, reste à renseigner', () => {
+    assert.equal(classer('PAIEMENT CB UBER TRIP HELP.UBER.COM 04/09').categorieId, null);
+  });
+
+  test('retrait DAB : aucune catégorie « espèces » n’existe, reste à renseigner', () => {
+    assert.equal(classer('RETRAIT DAB 04/09 PARIS 75015').categorieId, null);
+  });
+
+  test('virement générique : jamais catégorisé sur le seul mot VIR/VIREMENT', () => {
+    assert.equal(classer('VIREMENT SEPA RECU DE M DUPONT JEAN').categorieId, null);
+  });
+
+  test('une règle créée depuis une première opération capte la suivante malgré une référence différente', () => {
+    const motifPropose = motifDepuisLibelle('PRLV SEPA PAYPAL EUROPE S.A.R.L. ... REF/111111');
+    const regleUtilisateur: RegleCategorisation = {
+      id: 'u1',
+      motif: motifPropose,
+      typeCorrespondance: 'contains',
+      categorieId: 'Divers / achats plaisir',
+      priorite: 100,
+      autoValider: false,
+      active: true,
+    };
+    const commercantSuivant = nettoyerCommercant('PRLV SEPA PAYPAL EUROPE S.A.R.L. ... REF/999999');
+    const { transaction: t } = categoriser(transaction(commercantSuivant), [regleUtilisateur]);
+    assert.equal(t.categorieId, 'Divers / achats plaisir');
   });
 });
