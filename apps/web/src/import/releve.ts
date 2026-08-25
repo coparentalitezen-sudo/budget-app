@@ -207,7 +207,23 @@ function analyserLigneOperation(
 ): LigneAnalysee {
   // La tabulation juste après la date (s'il y en a une) sépare la date du
   // reste de la ligne ; elle ne fait pas partie du libellé.
-  const champs = reste.replace(/^\t/, '').split('\t').map((c) => c.trim());
+  const champsBruts = reste.replace(/^\t/, '').split('\t').map((c) => c.trim());
+
+  // Un signe « - » ou « + » isolé dans son propre champ (l'extraction PDF y
+  // a inséré une tabulation à cause d'un espacement de police entre le
+  // signe et le chiffre) doit être recollé au champ suivant AVANT toute
+  // analyse. Sans ce recollage, un débit noté « -45,20 » perdrait son signe
+  // au profit du champ voisin, lu comme un montant positif — un débit
+  // afficherait alors « + » comme un crédit.
+  const champs: string[] = [];
+  for (let i = 0; i < champsBruts.length; i++) {
+    if ((champsBruts[i] === '-' || champsBruts[i] === '+') && i + 1 < champsBruts.length) {
+      champs.push(champsBruts[i] + champsBruts[i + 1]);
+      i++;
+    } else {
+      champs.push(champsBruts[i]);
+    }
+  }
 
   let libelle = champs[0] ?? '';
   let montant: Cents | null = null;

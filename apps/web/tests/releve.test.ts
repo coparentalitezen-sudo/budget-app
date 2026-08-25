@@ -206,3 +206,24 @@ describe('Libellé jamais pollué par du texte d’en-tête ou de pied de page',
     assert.doesNotMatch(lignes[0].libelle, /RELEVE|CHEQUES|\bRIB\b|NATURE|OPERATIONS/i);
   });
 });
+
+describe('Un débit ne devient jamais un crédit (signe séparé par l’extraction PDF)', () => {
+  test('un signe « - » isolé dans son propre champ est recollé au montant', () => {
+    // Sans entête débit/crédit détectée : l'extraction a inséré une
+    // tabulation entre le signe et le chiffre (espacement de police), un
+    // débit de 45,20 € ne doit surtout pas être lu comme un crédit.
+    const texte = '16/06/2026\tCB CARREFOUR MARKET\t-\t45,20';
+    const { lignes } = analyserRelevePdf(texte);
+    assert.equal(lignes.length, 1);
+    assert.equal(lignes[0].sens, 'debit');
+    assert.equal(lignes[0].montant, 4520);
+  });
+
+  test('un montant avec signe final (« 45,20- ») est bien un débit', () => {
+    const texte = '16/06/2026\tCB CARREFOUR MARKET\t45,20-';
+    const { lignes } = analyserRelevePdf(texte);
+    assert.equal(lignes.length, 1);
+    assert.equal(lignes[0].sens, 'debit');
+    assert.equal(lignes[0].montant, 4520);
+  });
+});

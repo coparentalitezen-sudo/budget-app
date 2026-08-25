@@ -94,6 +94,10 @@ export function analyserMontant(texte: string): Cents | null {
   if (t.startsWith('-')) {
     negatif = true;
     t = t.slice(1);
+  } else if (t.endsWith('-')) {
+    // Signe final : convention de certains relevés bancaires (« 45,20- »).
+    negatif = true;
+    t = t.slice(0, -1);
   }
   if (t.startsWith('+')) t = t.slice(1);
 

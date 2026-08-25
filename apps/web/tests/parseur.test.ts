@@ -21,6 +21,7 @@ describe('Montants français', () => {
   test('négatifs sous toutes leurs formes', () => {
     assert.equal(analyserMontant('-45,20'), -4520);
     assert.equal(analyserMontant('(45,20)'), -4520); // notation comptable
+    assert.equal(analyserMontant('45,20-'), -4520); // signe final, certains relevés bancaires
   });
 
   test('un champ illisible vaut null, JAMAIS zéro', () => {
