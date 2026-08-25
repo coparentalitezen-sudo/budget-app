@@ -3,17 +3,19 @@
    de build supplémentaire, et un contrôle exact des zones tactiles. */
 
 :root {
-  --fond: #0f1115;
-  --surface: #181c23;
-  --surface-haute: #212630;
+  --fond: #0b0d12;
+  --surface: #161a22;
+  --surface-haute: #1f2530;
   --texte: #f2f4f8;
   --texte-doux: #98a1b3;
   --accent: #4ade80;
+  --bleu: #38bdf8;
+  --violet: #a78bfa;
   --attention: #fbbf24;
   --critique: #f87171;
   --inconnu: #7c8598;
   --bordure: #262c37;
-  --rayon: 14px;
+  --rayon: 16px;
   --marge: 16px;
 }
 
@@ -47,16 +49,36 @@ body {
 .contenu { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 .ecran {
-  display: flex; flex-direction: column; gap: 12px;
-  padding: var(--marge) var(--marge) 96px;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: var(--marge) var(--marge) 100px;
 }
 
 .periode { margin: 0; color: var(--texte-doux); font-size: 13px; text-transform: capitalize; }
+
+.entete-ligne { display: flex; justify-content: flex-end; }
+.pilule-periode {
+  font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px;
+  background: var(--surface-haute); border: 1px solid var(--bordure); color: var(--texte);
+}
 
 /* --- Bloc héros : l'information numéro un --- */
 .heros { padding: 20px 4px 8px; }
 .heros-question { margin: 0 0 6px; color: var(--texte-doux); font-size: 14px; }
 .heros-appui { margin: 6px 0 0; color: var(--texte-doux); font-size: 13px; }
+
+/* --- Carte principale : reste à dépenser --- */
+.carte-principale { padding: 16px; }
+.principale-tete { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.principale-libelle { font-size: 14px; color: var(--texte-doux); font-weight: 500; }
+.principale-pied {
+  display: flex; justify-content: space-between; font-size: 12px;
+  color: var(--texte-doux); margin-top: 8px;
+}
+
+.icone-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 10px; font-size: 17px; flex: none;
+}
 
 .valeur { font-variant-numeric: tabular-nums; font-weight: 600; }
 .valeur-geante { font-size: 44px; letter-spacing: -1.5px; display: block; }
@@ -195,16 +217,20 @@ body {
 .feuille-tete h2 { font-size: 17px; margin: 0; }
 
 .navigation {
-  display: flex; overflow-x: auto; gap: 2px;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
   border-top: 1px solid var(--bordure); background: var(--surface);
   padding: 6px 6px calc(env(safe-area-inset-bottom) + 6px);
 }
 .navigation button {
-  flex: 1 0 auto; min-width: 62px; min-height: 44px; padding: 6px 8px;
-  background: none; border: none; color: var(--texte-doux); font-size: 12px;
-  border-radius: 9px; white-space: nowrap;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-width: 0; min-height: 48px; padding: 6px 2px;
+  background: none; border: none; color: var(--texte-doux); font-size: 11px;
+  border-radius: 9px; white-space: nowrap; overflow: hidden;
 }
+.navigation-icone { font-size: 18px; line-height: 1; }
+.navigation-libelle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .navigation button.actif { color: var(--texte); background: var(--surface-haute); }
+.navigation button.actif .navigation-icone { filter: none; }
 
 /* Onglets internes d'une section de configuration. */
 .bascule-item {
@@ -226,18 +252,27 @@ body {
 /* --- Indicateurs clés --------------------------------------------- */
 .kpi-grille { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .kpi {
-  display: flex; flex-direction: column; gap: 2px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0;
   background: var(--surface); border: 1px solid var(--bordure);
-  border-radius: var(--rayon); padding: 12px 10px;
+  border-radius: var(--rayon); padding: 10px 8px;
 }
-.kpi-libelle { font-size: 11px; color: var(--texte-doux); text-transform: uppercase; letter-spacing: 0.04em; }
-.kpi-valeur { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.kpi .icone-badge { width: 26px; height: 26px; border-radius: 8px; font-size: 13px; margin-bottom: 2px; }
+.kpi-libelle { font-size: 10px; color: var(--texte-doux); text-transform: uppercase; letter-spacing: 0.04em; }
+.kpi-valeur {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
 .kpi-appui { font-size: 11px; color: var(--texte-doux); }
 .kpi-revenus { border-left: 3px solid var(--accent); }
-.kpi-depenses { border-left: 3px solid #38bdf8; }
-.kpi-epargne { border-left: 3px solid #a78bfa; }
+.kpi-depenses { border-left: 3px solid var(--bleu); }
+.kpi-epargne { border-left: 3px solid var(--violet); }
 
 /* --- Anneau -------------------------------------------------------- */
+.colonnes-anneaux { align-items: stretch; gap: 10px; }
+.carte-anneau .carte-tete h2 { text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
+.anneau-entete-total { margin: 0; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.anneau-entete-sous { margin: 0 0 8px; font-size: 12px; color: var(--texte-doux); }
+
 .anneau-bloc { display: flex; flex-direction: column; gap: 12px; }
 .anneau-graphe { display: flex; justify-content: center; }
 .anneau-graphe svg { width: 168px; height: 168px; }
@@ -249,15 +284,92 @@ body {
 }
 .anneau-libelle { text-anchor: middle; fill: var(--texte-doux); font-size: 10px; }
 
+.anneau-bloc-compact { gap: 8px; }
+.anneau-bloc-compact .anneau-graphe svg { width: 116px; height: 116px; }
+.anneau-bloc-compact .anneau-total { font-size: 13px; }
+.anneau-bloc-compact .anneau-legende { gap: 5px; }
+.anneau-bloc-compact .anneau-legende li { font-size: 12px; }
+.anneau-vide { align-items: center; text-align: center; }
+.anneau-vide .anneau-graphe svg { width: 92px; height: 92px; opacity: 0.6; }
+.anneau-vide .anneau-libelle { font-size: 20px; }
+.anneau-vide-texte { margin: 0; }
+.anneau-plus { margin: 0; }
+
 .anneau-legende { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
 .anneau-legende li {
-  display: grid; grid-template-columns: 10px 1fr auto auto;
+  display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto;
   align-items: center; gap: 8px; font-size: 13px;
 }
-.pastille { width: 10px; height: 10px; border-radius: 3px; }
-.legende-nom { color: var(--texte); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.legende-part { color: var(--texte-doux); font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
-.legende-montant { font-variant-numeric: tabular-nums; min-width: 74px; text-align: right; }
+.pastille { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.legende-nom { color: var(--texte); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.legende-part { color: var(--texte-doux); font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+.legende-montant { font-variant-numeric: tabular-nums; min-width: 66px; text-align: right; }
+
+.anneau-bloc-compact .pastille { width: 8px; height: 8px; }
+.anneau-bloc-compact .anneau-legende li { gap: 4px; font-size: 12px; }
+.anneau-bloc-compact .legende-part { min-width: 24px; font-size: 11px; }
+.anneau-bloc-compact .legende-montant { min-width: 52px; font-size: 11px; }
+.carte-anneau { padding: 12px; }
+
+.lien-detail { padding: 2px 0; font-size: 13px; text-align: left; align-self: flex-start; }
 
 .top-ligne { padding: 8px 0; border-bottom: 1px solid var(--bordure); }
 .top-ligne:last-child { border-bottom: none; }
+
+/* --- Enveloppes ------------------------------------------------------ */
+.enveloppe-ligne { padding: 8px 0; }
+.enveloppe-ligne + .enveloppe-ligne { border-top: 1px solid var(--bordure); }
+.enveloppe-tete { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.pastille-icone {
+  width: 26px; height: 26px; border-radius: 8px; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; flex: none;
+}
+.enveloppe-nom { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.enveloppe-montant { flex: none; font-size: 12px; color: var(--texte-doux); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.enveloppe-pourcent { flex: none; font-size: 12px; font-weight: 600; min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* --- Colonnes compactes (Top 3 / Objectif épargne) ------------------- */
+.colonnes-compactes { align-items: stretch; }
+.colonnes-compactes .carte { display: flex; flex-direction: column; }
+
+.top3-ligne {
+  display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; align-items: center;
+  gap: 7px; font-size: 12px; padding: 6px 0;
+}
+.top3-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.top3-montant { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.top3-pourcent { color: var(--texte-doux); font-variant-numeric: tabular-nums; min-width: 30px; text-align: right; }
+
+/* --- Jauge semi-circulaire (objectif épargne) ------------------------ */
+.semi-jauge { position: relative; display: flex; justify-content: center; margin: 2px 0 6px; }
+.semi-jauge svg { width: 100%; max-width: 190px; height: auto; }
+.semi-jauge-fond { fill: none; stroke: var(--surface-haute); stroke-width: 10; }
+.semi-jauge-remplissage { fill: none; stroke-width: 10; stroke-linecap: round; }
+.semi-jauge-centre {
+  position: absolute; bottom: -2px; left: 0; right: 0;
+  display: flex; flex-direction: column; align-items: center;
+}
+.semi-jauge-valeur { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.semi-jauge-label { font-size: 11px; color: var(--texte-doux); }
+
+/* --- Projection -------------------------------------------------------- */
+.projection-corps { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.projection-principal { display: flex; flex-direction: column; gap: 2px; }
+.projection-tendance { font-size: 22px; }
+.projection-hausse { color: var(--accent); }
+.projection-baisse { color: var(--critique); }
+
+.alerte-icone { margin-right: 6px; }
+
+/* --- Menu « Plus » ----------------------------------------------------- */
+.plus-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.plus-entree {
+  width: 100%; display: flex; align-items: center; gap: 12px;
+  padding: 10px 4px; background: none; border: none; border-bottom: 1px solid var(--bordure);
+  text-align: left; min-height: 52px;
+}
+.plus-liste li:last-child .plus-entree { border-bottom: none; }
+.plus-texte { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.plus-libelle { font-size: 15px; color: var(--texte); }
+.plus-description { font-size: 12px; color: var(--texte-doux); }
+.plus-chevron { color: var(--texte-doux); font-size: 18px; }

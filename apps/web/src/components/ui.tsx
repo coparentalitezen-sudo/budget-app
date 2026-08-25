@@ -4,14 +4,16 @@ import { INCONNU } from '../lib/format.ts';
 export function Carte({
   titre,
   action,
+  className,
   children,
 }: {
   titre?: string;
   action?: ReactNode;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="carte">
+    <section className={`carte${className ? ` ${className}` : ''}`}>
       {titre && (
         <header className="carte-tete">
           <h2>{titre}</h2>
@@ -77,4 +79,56 @@ export function Etiquette({ children, ton }: { children: ReactNode; ton?: string
 
 export function Vide({ message }: { message: string }) {
   return <p className="vide">{message}</p>;
+}
+
+/** Couleurs d'accent partagées entre les cartes KPI, badges et jauges. */
+export const COULEUR_REVENUS = '#4ade80';
+export const COULEUR_DEPENSES = '#38bdf8';
+export const COULEUR_EPARGNE = '#a78bfa';
+
+/** Pastille ronde colorée portant une icône (emoji) — purement décoratif. */
+export function IconeBadge({ emoji, couleur }: { emoji: string; couleur: string }) {
+  return (
+    <span className="icone-badge" style={{ background: `${couleur}26`, color: couleur }}>
+      {emoji}
+    </span>
+  );
+}
+
+/**
+ * Jauge semi-circulaire, pour un objectif unique (ex. l'épargne).
+ * `ratio` est fourni déjà calculé par l'appelant à partir de valeurs issues
+ * du moteur (aucun calcul métier ici) ; il peut dépasser 1, le tracé est
+ * alors simplement plafonné à un cercle plein.
+ */
+export function JaugeSemiCirculaire({
+  ratio,
+  valeurCentre,
+  labelCentre,
+  couleur = COULEUR_EPARGNE,
+}: {
+  ratio: number;
+  valeurCentre: string;
+  labelCentre: string;
+  couleur?: string;
+}) {
+  const rempli = Math.max(0, Math.min(1, ratio)) * 100;
+  return (
+    <div className="semi-jauge">
+      <svg viewBox="0 0 120 68" role="img" aria-label={labelCentre}>
+        <path d="M10 60 A50 50 0 0 1 110 60" className="semi-jauge-fond" />
+        <path
+          d="M10 60 A50 50 0 0 1 110 60"
+          className="semi-jauge-remplissage"
+          style={{ stroke: couleur }}
+          pathLength={100}
+          strokeDasharray={`${rempli} 100`}
+        />
+      </svg>
+      <div className="semi-jauge-centre">
+        <span className="semi-jauge-valeur">{valeurCentre}</span>
+        <span className="semi-jauge-label">{labelCentre}</span>
+      </div>
+    </div>
+  );
 }

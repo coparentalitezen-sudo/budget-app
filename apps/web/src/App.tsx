@@ -8,6 +8,7 @@ import { Provisions } from './screens/Provisions.tsx';
 import { Parametres } from './screens/Parametres.tsx';
 import { Import } from './screens/Import.tsx';
 import { Configurer } from './screens/Configurer.tsx';
+import { Plus } from './screens/Plus.tsx';
 import { SaisieRapide } from './components/SaisieRapide.tsx';
 import { installerSyncAutomatique } from './db/sync.ts';
 import { useOutboxCount } from './state/useDonnees.ts';
@@ -16,18 +17,17 @@ import { supabaseConfigure } from './lib/supabase.ts';
 
 type Onglet =
   | 'accueil' | 'transactions' | 'budget' | 'epargne'
-  | 'credits' | 'provisions' | 'import' | 'configurer' | 'parametres';
+  | 'credits' | 'provisions' | 'import' | 'configurer' | 'parametres' | 'plus';
 
-const ONGLETS: { cle: Onglet; libelle: string }[] = [
-  { cle: 'accueil', libelle: 'Accueil' },
-  { cle: 'transactions', libelle: 'Opérations' },
-  { cle: 'budget', libelle: 'Budget' },
-  { cle: 'epargne', libelle: 'Épargne' },
-  { cle: 'credits', libelle: 'Crédits' },
-  { cle: 'provisions', libelle: 'Provisions' },
-  { cle: 'import', libelle: 'Import' },
-  { cle: 'configurer', libelle: 'Config' },
-  { cle: 'parametres', libelle: 'Réglages' },
+/** Sections regroupées sous « Plus », pour que la navigation reste à 5 entrées. */
+const SOUS_PLUS: Onglet[] = ['credits', 'provisions', 'import', 'configurer', 'parametres'];
+
+const ONGLETS: { cle: Onglet; libelle: string; icone: string }[] = [
+  { cle: 'accueil', libelle: 'Accueil', icone: '🏠' },
+  { cle: 'transactions', libelle: 'Opérations', icone: '📋' },
+  { cle: 'budget', libelle: 'Budget', icone: '📊' },
+  { cle: 'epargne', libelle: 'Épargne', icone: '🐷' },
+  { cle: 'plus', libelle: 'Plus', icone: '⋯' },
 ];
 
 export default function App() {
@@ -87,6 +87,7 @@ function Application() {
               setVueTransactions('a_renseigner');
               setOnglet('transactions');
             }}
+            onNaviguer={(cible) => setOnglet(cible)}
           />
         )}
         {onglet === 'transactions' && <Transactions vueInitiale={vueTransactions} />}
@@ -97,6 +98,7 @@ function Application() {
         {onglet === 'import' && <Import />}
         {onglet === 'configurer' && <Configurer />}
         {onglet === 'parametres' && <Parametres />}
+        {onglet === 'plus' && <Plus onOuvrir={(cle) => setOnglet(cle as Onglet)} />}
       </main>
 
       <button
@@ -110,18 +112,22 @@ function Application() {
       {saisieOuverte && <SaisieRapide onFerme={() => setSaisieOuverte(false)} />}
 
       <nav className="navigation">
-        {ONGLETS.map((o) => (
-          <button
-            key={o.cle}
-            className={onglet === o.cle ? 'actif' : ''}
-            onClick={() => {
-              if (o.cle !== 'transactions') setVueTransactions(undefined);
-              setOnglet(o.cle);
-            }}
-          >
-            {o.libelle}
-          </button>
-        ))}
+        {ONGLETS.map((o) => {
+          const actif = o.cle === 'plus' ? SOUS_PLUS.includes(onglet) || onglet === 'plus' : onglet === o.cle;
+          return (
+            <button
+              key={o.cle}
+              className={actif ? 'actif' : ''}
+              onClick={() => {
+                if (o.cle !== 'transactions') setVueTransactions(undefined);
+                setOnglet(o.cle);
+              }}
+            >
+              <span className="navigation-icone">{o.icone}</span>
+              <span className="navigation-libelle">{o.libelle}</span>
+            </button>
+          );
+        })}
       </nav>
     </div>
   );

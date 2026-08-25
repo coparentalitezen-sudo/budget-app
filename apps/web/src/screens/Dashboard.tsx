@@ -2,22 +2,36 @@ import { synthetiserMois, synthetiserSemaine } from '@budget/core/src/budget.ts'
 import { situationVirement } from '@budget/core/src/tresorerie.ts';
 import { projeterSolde } from '@budget/core/src/projection.ts';
 import { genererAlertes } from '@budget/core/src/alertes.ts';
-import { periodeDe } from '@budget/core/src/periode.ts';
-import { Anneau, type PartAnneau } from '../components/Anneau.tsx';
-import { Carte, Jauge, Valeur } from '../components/ui.tsx';
-import { aujourdhuiISO, moisLong, montant } from '../lib/format.ts';
+import { periodeDe, joursDansMois, finDeMois } from '@budget/core/src/periode.ts';
+import { Anneau, PALETTE_ANNEAU, type PartAnneau } from '../components/Anneau.tsx';
+import {
+  Carte, Jauge, Valeur, IconeBadge, JaugeSemiCirculaire,
+  COULEUR_REVENUS, COULEUR_DEPENSES, COULEUR_EPARGNE,
+} from '../components/ui.tsx';
+import {
+  aujourdhuiISO, moisPilule, montant, montantSigne, nomMois, pourcent, jourMois,
+} from '../lib/format.ts';
 import { useConfiguration, useTransactions } from '../state/useDonnees.ts';
 import { estARenseigner } from './Transactions.tsx';
+
+type CibleNavigation = 'budget' | 'epargne' | 'configurer';
 
 /**
  * Tableau de bord.
  *
  * AUCUN calcul métier ici. Tout provient de `synthetiserMois`,
  * `synthetiserSemaine`, `situationVirement`, `projeterSolde` et
- * `genererAlertes`. Ce fichier ne fait que choisir des couleurs, trier
- * pour l'affichage et mettre en forme.
+ * `genererAlertes`. Ce fichier ne fait que choisir des couleurs, icônes,
+ * trier/replier pour l'affichage et mettre en forme — jamais recalculer
+ * une valeur financière.
  */
-export function Dashboard({ onOuvrirARenseigner }: { onOuvrirARenseigner?: () => void } = {}) {
+export function Dashboard({
+  onOuvrirARenseigner,
+  onNaviguer,
+}: {
+  onOuvrirARenseigner?: () => void;
+  onNaviguer?: (cible: CibleNavigation) => void;
+} = {}) {
   const { config } = useConfiguration();
   const transactions = useTransactions();
   const aujourdhui = aujourdhuiISO();
@@ -28,9 +42,11 @@ export function Dashboard({ onOuvrirARenseigner }: { onOuvrirARenseigner?: () =>
   const virement = situationVirement(config, transactions, aujourdhui);
   const projection = projeterSolde(config, transactions, aujourdhui);
   const alertes = genererAlertes(config, transactions, aujourdhui);
+  const epargne = mois.epargne;
+
+  const aller = (cible: CibleNavigation) => () => onNaviguer?.(cible);
 
   const aRenseigner = transactions.filter(estARenseigner).length;
-  const epargne = mois.epargne;
 
   /* --- Anneau des dépenses : issu de mois.categories ----------------- */
   const totalDepense = mois.depensesVariables;
@@ -43,6 +59,7 @@ export function Dashboard({ onOuvrirARenseigner }: { onOuvrirARenseigner?: () =>
       montant: c.depense,
       part: totalDepense > 0 ? c.depense / totalDepense : 0,
     }));
+  const ratioBudgetVariable = mois.budgetVariable > 0 ? mois.depensesVariables / mois.budgetVariable : null;
 
   /* --- Anneau des revenus : issu de mois.revenus --------------------- */
   const partsRevenus: PartAnneau[] = mois.revenus.lignes.map((l) => ({
@@ -52,16 +69,39 @@ export function Dashboard({ onOuvrirARenseigner }: { onOuvrirARenseigner?: () =>
     part: l.part,
   }));
 
+  /* --- Enveloppes : jusqu'à 4, les plus consommées d'abord ------------ */
+  const enveloppes = [...mois.categories]
+    .filter((c) => c.prevu > 0)
+    .sort((a, b) => b.pourcentage - a.pourcentage)
+    .slice(0, 4);
+
+  /* --- Top 3 dépenses --------------------------------------------- */
   const topCategories = [...mois.categories]
     .filter((c) => c.depense > 0)
     .sort((a, b) => b.depense - a.depense)
-    .slice(0, 5);
+    .slice(0, 3);
 
   const alertesFortes = alertes.filter((a) => a.niveau !== 'info').slice(0, 3);
 
+  /* --- Objectif épargne : ratio d'affichage de la jauge semi-circulaire.
+   * Le ratio n'est qu'un affichage de deux valeurs déjà calculées par le
+   * moteur (`capaciteEpargneBudgetaire`, `objectifEpargne`) ; aucune donnée
+   * financière n'est produite ici. --------------------------------------- */
+  const ratioObjectif = epargne.objectifEpargne > 0
+    ? Math.max(0, epargne.capaciteEpargneBudgetaire / epargne.objectifEpargne)
+    : 0;
+
+  const ratioHero = mois.budgetVariable > 0 ? mois.depensesVariables / mois.budgetVariable : 0;
+
+  const tendance = projection.soldeProjeteTendanciel === null
+    ? null
+    : projection.soldeProjeteTendanciel >= 0 ? 'hausse' : 'baisse';
+
   return (
     <div className="ecran">
-      <p className="periode">{moisLong(periode)}</p>
+      <div className="entete-ligne">
+        <span className="pilule-periode">📅 {moisPilule(periode)}</span>
+      </div>
 
       {aRenseigner > 0 && (
         <button className="bandeau-alerte" onClick={onOuvrirARenseigner}>
@@ -69,19 +109,69 @@ export function Dashboard({ onOuvrirARenseigner }: { onOuvrirARenseigner?: () =>
         </button>
       )}
 
-      {/* Information numéro un */}
-      <section className="heros">
-        <p className="heros-question">Combien puis-je encore dépenser ?</p>
+      {/* 1. Carte principale — l'information numéro un */}
+      <section className="carte carte-principale">
+        <div className="principale-tete">
+          <IconeBadge emoji="👛" couleur={COULEUR_REVENUS} />
+          <span className="principale-libelle">Reste à dépenser</span>
+        </div>
         <Valeur texte={montant(mois.resteADepenser)} taille="geante" />
         <p className="heros-appui">
           {montant(semaine.disponibleCetteSemaine)} d’ici dimanche ·{' '}
           {montant(semaine.allocationQuotidienne)}/jour
         </p>
+        <Jauge ratio={ratioHero} />
+        <div className="principale-pied">
+          <span>Période : 1 – {joursDansMois(periode)} {nomMois(periode)}</span>
+          <span>{semaine.joursRestantsMois} jours restants</span>
+        </div>
       </section>
 
-      {/* Trois indicateurs */}
+      {/* 2. Deux anneaux côte à côte */}
+      <div className="colonnes colonnes-anneaux">
+        <Carte titre="Revenus" className="carte-anneau">
+          <p className="anneau-entete-total">{montant(mois.revenus.total)}</p>
+          <p className="anneau-entete-sous">
+            {mois.revenus.base === 'prevu' ? 'prévus' : 'perçus'}
+          </p>
+          <Anneau
+            compact
+            limiteLegende={4}
+            parts={partsRevenus}
+            total={mois.revenus.total}
+            centreValeur={mois.revenus.base === 'prevu' ? '100 %' : montant(mois.revenus.total)}
+            legendeCentre={mois.revenus.base === 'prevu' ? 'prévu' : 'perçu'}
+            videTexte="Aucun revenu configuré."
+            note={
+              mois.revenus.base === 'realise' && mois.revenus.comporteNonIdentifie
+                ? 'Une part n’a pas pu être rattachée à une source connue.'
+                : undefined
+            }
+            lienDetail={{ texte: 'Voir le détail', onClick: aller('configurer') }}
+          />
+        </Carte>
+
+        <Carte titre="Dépenses" className="carte-anneau">
+          <p className="anneau-entete-total">{montant(totalDepense)}</p>
+          <p className="anneau-entete-sous">réalisées</p>
+          <Anneau
+            compact
+            limiteLegende={4}
+            parts={partsDepenses}
+            total={totalDepense}
+            centreValeur={ratioBudgetVariable === null ? montant(totalDepense) : pourcent(ratioBudgetVariable)}
+            legendeCentre="du budget"
+            videTexte="Aucune dépense ce mois-ci."
+            note={mois.budgetVariable > 0 ? `Enveloppes : ${montant(mois.budgetVariable)}` : undefined}
+            lienDetail={{ texte: 'Voir le détail', onClick: aller('budget') }}
+          />
+        </Carte>
+      </div>
+
+      {/* 3. KPI secondaires */}
       <div className="kpi-grille">
         <div className="kpi kpi-revenus">
+          <IconeBadge emoji="📈" couleur={COULEUR_REVENUS} />
           <span className="kpi-libelle">Revenus</span>
           <span className="kpi-valeur">{montant(mois.revenus.total)}</span>
           <span className="kpi-appui">
@@ -89,102 +179,112 @@ export function Dashboard({ onOuvrirARenseigner }: { onOuvrirARenseigner?: () =>
           </span>
         </div>
         <div className="kpi kpi-depenses">
+          <IconeBadge emoji="📉" couleur={COULEUR_DEPENSES} />
           <span className="kpi-libelle">Dépenses</span>
           <span className="kpi-valeur">{montant(mois.depensesVariables)}</span>
           <span className="kpi-appui">sur {montant(mois.budgetVariable)}</span>
         </div>
         <div className="kpi kpi-epargne">
+          <IconeBadge emoji="🐷" couleur={COULEUR_EPARGNE} />
           <span className="kpi-libelle">Épargne</span>
           <span className="kpi-valeur">{montant(epargne.capaciteEpargneBudgetaire)}</span>
           <span className="kpi-appui">capacité</span>
         </div>
       </div>
 
-      <Carte titre="Dépenses par catégorie">
-        <Anneau
-          parts={partsDepenses}
-          total={totalDepense}
-          legendeCentre="dépensés"
-          note={
-            partsDepenses.length === 0
-              ? undefined
-              : `${partsDepenses.length} catégorie(s) mouvementée(s) ce mois-ci.`
-          }
-        />
-      </Carte>
-
-      <Carte titre="Revenus par source">
-        <Anneau
-          parts={partsRevenus}
-          total={mois.revenus.total}
-          legendeCentre={mois.revenus.base === 'prevu' ? 'prévus' : 'perçus'}
-          note={
-            mois.revenus.base === 'prevu'
-              ? 'Aucun encaissement enregistré ce mois-ci : répartition prévisionnelle. Ce n’est pas une absence de revenus.'
-              : mois.revenus.comporteNonIdentifie
-                ? 'Une part des encaissements n’a pas pu être rattachée à une source connue. Elle est isolée, jamais répartie d’office.'
-                : undefined
-          }
-        />
-      </Carte>
-
-      {topCategories.length > 0 && (
-        <Carte titre="Où part l’argent">
-          {topCategories.map((c) => (
-            <div key={c.categorieId} className="top-ligne">
-              <div className="categorie-tete">
-                <span>{c.nom}</span>
-                <span className={c.pourcentage > 1 ? 'ton-negatif' : ''}>
-                  {montant(c.depense)}
+      {/* 4. Enveloppes */}
+      {enveloppes.length > 0 && (
+        <Carte
+          titre="Enveloppes"
+          action={<button className="lien" onClick={aller('budget')}>Gérer</button>}
+        >
+          {enveloppes.map((c, i) => (
+            <div key={c.categorieId} className="enveloppe-ligne">
+              <div className="enveloppe-tete">
+                <span
+                  className="pastille pastille-icone"
+                  style={{ background: `${PALETTE_ANNEAU[i % PALETTE_ANNEAU.length]}26` }}
+                >
+                  {iconePourCategorie(c.nom)}
                 </span>
+                <span className="enveloppe-nom">{c.nom}</span>
+                <span className={`enveloppe-montant${c.pourcentage > 1 ? ' ton-negatif' : ''}`}>
+                  {montant(c.depense)} / {montant(c.prevu)}
+                </span>
+                <span className="enveloppe-pourcent">{Math.round(c.pourcentage * 100)} %</span>
               </div>
               <Jauge ratio={c.pourcentage} />
-              <div className="categorie-pied">
-                <span>{Math.round(c.pourcentage * 100)} % de l’enveloppe</span>
-                <span className={c.restant < 0 ? 'ton-negatif' : ''}>
-                  {c.restant < 0 ? 'Dépassement ' : 'Reste '}
-                  {montant(Math.abs(c.restant))}
-                </span>
-              </div>
             </div>
           ))}
         </Carte>
       )}
 
-      <Carte titre={`Objectif épargne ${montant(epargne.objectifEpargne)}`}>
-        <Jauge
-          ratio={Math.max(0, epargne.capaciteEpargneBudgetaire / epargne.objectifEpargne)}
-          seuil={1}
-        />
-        <div className="categorie-pied">
-          <span>Capacité {montant(epargne.capaciteEpargneBudgetaire)}</span>
-          <span className={epargne.atteignable ? 'ton-positif' : 'ton-negatif'}>
-            Écart {montant(epargne.ecartObjectif)}
-          </span>
-        </div>
-        {!epargne.atteignable && (
-          <p className="note note-attention">
-            Objectif {montant(epargne.objectifEpargne)} non atteignable avec le budget
-            actuel. L’objectif reste inchangé.
-          </p>
-        )}
-        <div className="categorie-pied">
-          <span>Transférable maintenant</span>
-          <span>{montant(virement.montantTransferableMaintenant)}</span>
-        </div>
-        {virement.blocages.map((b) => (
-          <p key={b} className="note">{b} — aucun virement n’est présenté comme sûr.</p>
-        ))}
-      </Carte>
+      {/* 5 & 6. Top 3 dépenses et objectif épargne, côte à côte */}
+      <div className="colonnes colonnes-compactes">
+        <Carte titre="Top 3 dépenses">
+          {topCategories.length === 0 && <p className="note">Aucune dépense ce mois-ci.</p>}
+          {topCategories.map((c, i) => (
+            <div key={c.categorieId} className="top3-ligne">
+              <span className="pastille" style={{ background: PALETTE_ANNEAU[i % PALETTE_ANNEAU.length] }} />
+              <span className="top3-nom">{c.nom}</span>
+              <span className="top3-montant">{montant(c.depense)}</span>
+              <span className="top3-pourcent">{Math.round(c.pourcentage * 100)} %</span>
+            </div>
+          ))}
+          {mois.categories.filter((c) => c.depense > 0).length > 0 && (
+            <button className="lien lien-detail" onClick={aller('budget')}>
+              Voir toutes les catégories ›
+            </button>
+          )}
+        </Carte>
 
-      <Carte titre="Projection fin de mois">
+        <Carte titre="Objectif épargne">
+          <JaugeSemiCirculaire
+            ratio={ratioObjectif}
+            valeurCentre={montant(epargne.objectifEpargne)}
+            labelCentre="objectif"
+            couleur={COULEUR_EPARGNE}
+          />
+          <div className="categorie-pied">
+            <span>{montant(epargne.capaciteEpargneBudgetaire)} / {montant(epargne.objectifEpargne)}</span>
+            <span className={epargne.atteignable ? 'ton-positif' : 'ton-negatif'}>
+              {pourcent(ratioObjectif)}
+            </span>
+          </div>
+          {!epargne.atteignable && (
+            <p className="note note-attention">
+              Écart {montant(epargne.ecartObjectif)} — objectif inchangé.
+            </p>
+          )}
+          <p className="note">
+            Transférable maintenant : {montant(virement.montantTransferableMaintenant)}
+          </p>
+          {virement.blocages.length > 0 && (
+            <p className="note">{virement.blocages.join(' · ')}.</p>
+          )}
+        </Carte>
+      </div>
+
+      {/* 7. Projection fin de mois */}
+      <Carte
+        titre="Projection fin de mois"
+        action={<span className="badge">{jourMois(finDeMois(periode))}</span>}
+      >
+        <div className="projection-corps">
+          <div className="projection-principal">
+            <span className="ligne-libelle">Solde prévisionnel</span>
+            <Valeur texte={montantSigne(projection.soldeProjeteTendanciel)} taille="grande" />
+            <span className="note">si tendance actuelle</span>
+          </div>
+          {tendance && (
+            <span className={`projection-tendance projection-${tendance}`}>
+              {tendance === 'hausse' ? '▲' : '▼'}
+            </span>
+          )}
+        </div>
         <div className="categorie-pied">
           <span>Prudente</span>
           <span>{montant(projection.soldeProjetePrudent)}</span>
-        </div>
-        <div className="categorie-pied">
-          <span>Au rythme actuel</span>
-          <span>{montant(projection.soldeProjeteTendanciel)}</span>
         </div>
         {projection.soldeProjetePrudent === null && (
           <p className="note">
@@ -194,11 +294,15 @@ export function Dashboard({ onOuvrirARenseigner }: { onOuvrirARenseigner?: () =>
         )}
       </Carte>
 
+      {/* 8. Alertes */}
       {alertesFortes.length > 0 && (
         <Carte titre="À surveiller">
           {alertesFortes.map((a, i) => (
             <div key={`${a.code}-${i}`} className={`alerte alerte-${a.niveau}`}>
-              <p className="alerte-titre">{a.titre}</p>
+              <p className="alerte-titre">
+                <span className="alerte-icone">{a.niveau === 'critique' ? '🔴' : '🟠'}</span>
+                {a.titre}
+              </p>
               <p className="alerte-detail">{a.detail}</p>
             </div>
           ))}
@@ -212,4 +316,22 @@ export function Dashboard({ onOuvrirARenseigner }: { onOuvrirARenseigner?: () =>
       )}
     </div>
   );
+}
+
+/**
+ * Icône purement décorative associée au nom d'une catégorie.
+ * Aucune incidence financière : à défaut de correspondance, une icône
+ * générique est utilisée. Ce n'est pas une classification métier — celle-ci
+ * reste `Categorie.nature`, définie dans `packages/core`.
+ */
+function iconePourCategorie(nom: string): string {
+  const n = nom.toLowerCase();
+  if (/logement|loyer|immo/.test(n)) return '🏠';
+  if (/aliment|course|super/.test(n)) return '🛒';
+  if (/transport|essence|carburant|voiture/.test(n)) return '🚗';
+  if (/loisir|sortie|resto|restaurant/.test(n)) return '🍽️';
+  if (/sant[ée]|pharma|médic/.test(n)) return '💊';
+  if (/abonnement|téléphon|internet|forfait/.test(n)) return '📱';
+  if (/vêtement|habill/.test(n)) return '👕';
+  return '🏷️';
 }
