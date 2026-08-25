@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { periodeDe } from '@budget/core/src/periode.ts';
-import type { SourceTransaction, StatutTransaction, TypeTransaction } from '@budget/core/src/types.ts';
+import type { SourceTransaction, StatutTransaction, Transaction, TypeTransaction } from '@budget/core/src/types.ts';
 import { empreinte } from '../db/doublons.ts';
 import { chargerRegles } from '../db/configuration.ts';
 import { enregistrerTransaction, supprimerTransaction } from '../db/dexie.ts';
@@ -39,6 +39,8 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
   const [enCoursRecat, setEnCoursRecat] = useState(false);
   const [resultatRecat, setResultatRecat] = useState<string | null>(null);
   const [suppressionEnCours, setSuppressionEnCours] = useState<string | null>(null);
+  const [editionCategorieId, setEditionCategorieId] = useState<string | null>(null);
+  const [enregistrementCategorieId, setEnregistrementCategorieId] = useState<string | null>(null);
 
   const nomCategorie = (id: string | null) =>
     config.categories.find((c) => c.id === id)?.nom ?? 'Non catégorisé';
@@ -55,6 +57,25 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
       await supprimerTransaction(id);
     } finally {
       setSuppressionEnCours(null);
+    }
+  };
+
+  /**
+   * Change la catégorie d'une transaction déjà classée (la seule option
+   * pour ça restait « À renseigner », qui ne concerne que les opérations
+   * SANS catégorie — une fois catégorisée, il n'y avait plus aucun moyen de
+   * la corriger ailleurs).
+   */
+  const changerCategorie = async (t: Transaction, nouvelleCategorieId: string) => {
+    setEnregistrementCategorieId(t.id);
+    try {
+      await enregistrerTransaction({
+        ...t,
+        categorieId: nouvelleCategorieId === '' ? null : nouvelleCategorieId,
+      });
+    } finally {
+      setEnregistrementCategorieId(null);
+      setEditionCategorieId(null);
     }
   };
 
@@ -279,7 +300,29 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
                   </span>
                 </div>
                 <div className="transaction-meta">
-                  <Etiquette>{nomCategorie(t.categorieId)}</Etiquette>
+                  {editionCategorieId === t.id ? (
+                    <select
+                      className="champ champ-etiquette"
+                      autoFocus
+                      value={t.categorieId ?? ''}
+                      disabled={enregistrementCategorieId === t.id}
+                      onChange={(e) => void changerCategorie(t, e.target.value)}
+                      onBlur={() => setEditionCategorieId(null)}
+                    >
+                      <option value="">Non catégorisé</option>
+                      {config.categories.map((c) => (
+                        <option key={c.id} value={c.id}>{c.nom}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <button
+                      className="etiquette-bouton"
+                      onClick={() => setEditionCategorieId(t.id)}
+                      title="Changer la catégorie"
+                    >
+                      <Etiquette>{nomCategorie(t.categorieId)}</Etiquette>
+                    </button>
+                  )}
                   <Etiquette ton={t.statut === 'pending' ? 'attente' : 'ok'}>
                     {t.statut === 'pending' ? 'En attente' : 'Validée'}
                   </Etiquette>

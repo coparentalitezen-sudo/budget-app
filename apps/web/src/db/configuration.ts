@@ -1,6 +1,8 @@
 import { obtenirSupabase } from '../lib/supabase.ts';
 import { ecrireMeta, lireMeta } from './dexie.ts';
+import { patcherCacheConfiguration } from './repository.ts';
 import type { RegleCategorisation } from '../import/regles.ts';
+import type { Categorie } from '@budget/core/src/types.ts';
 
 /**
  * Écritures de configuration : catégories, enveloppes, activation des
@@ -39,9 +41,10 @@ export async function enregistrerCategorie(categorie: {
   const userId = session.session?.user.id;
   if (!userId) throw new Error('Session absente.');
 
+  const id = categorie.id ?? crypto.randomUUID();
   const { error } = await supabase.from('categories').upsert(
     {
-      id: categorie.id ?? crypto.randomUUID(),
+      id,
       user_id: userId,
       name: categorie.nom,
       nature: categorie.nature,
@@ -50,6 +53,22 @@ export async function enregistrerCategorie(categorie: {
     { onConflict: 'id' },
   );
   if (error) throw new Error(error.message);
+
+  // Sans ce correctif, la nouvelle catégorie ne serait visible qu'après un
+  // rechargement complet de l'application (le cache local, seul lu par les
+  // écrans, ne le saurait sinon qu'au prochain `chargerConfiguration`).
+  const nouvelle: Categorie = {
+    id,
+    nom: categorie.nom,
+    nature: categorie.nature,
+    criticite: categorie.criticite ?? undefined,
+  };
+  await patcherCacheConfiguration((c) => ({
+    ...c,
+    categories: c.categories.some((x) => x.id === id)
+      ? c.categories.map((x) => (x.id === id ? nouvelle : x))
+      : [...c.categories, nouvelle],
+  }));
 }
 
 /**
@@ -63,6 +82,10 @@ export async function archiverCategorie(id: string): Promise<void> {
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw new Error(error.message);
+  await patcherCacheConfiguration((c) => ({
+    ...c,
+    categories: c.categories.filter((x) => x.id !== id),
+  }));
 }
 
 /* ------------------------------------------------------------------ */

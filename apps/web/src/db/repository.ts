@@ -287,3 +287,17 @@ export async function definirSoldeObjectif(
 export async function viderCacheConfiguration(): Promise<void> {
   await db.meta.delete(CLE_CACHE);
 }
+
+/**
+ * Corrige le cache local sans repasser par Supabase — pour qu'une écriture
+ * qui vient de réussir à distance (catégorie créée, règle modifiée...) soit
+ * visible immédiatement, sans attendre le prochain `chargerConfiguration`
+ * (réseau) ou un remontage complet de l'application. Sans effet si rien
+ * n'est encore en cache (le prochain chargement distant l'inclura).
+ */
+export async function patcherCacheConfiguration(
+  corriger: (c: Configuration) => Configuration,
+): Promise<void> {
+  const cache = await configurationLocale();
+  if (cache) await ecrireMeta(CLE_CACHE, corriger(cache));
+}
