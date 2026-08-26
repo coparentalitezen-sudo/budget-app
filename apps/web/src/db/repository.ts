@@ -47,6 +47,9 @@ function versConfiguration(d: {
     nom: c.name as string,
     type: c.type as Compte['type'],
     solde: centimes(c.balance_cents),
+    soldeDate: (c.balance_as_of as string | null) ?? null,
+    soldeSource: (c.balance_source as Compte['soldeSource']) ?? null,
+    soldeImporteLe: (c.balance_imported_at as string | null) ?? null,
   }));
 
   const categories: Categorie[] = d.categories.map((c) => ({
@@ -234,17 +237,29 @@ export async function chargerConfiguration(periode: string): Promise<Configurati
  */
 export const configurationParDefaut = foyer2026;
 
-/** Met à jour un solde de compte, localement puis à distance. */
+/**
+ * Met à jour le SOLDE RÉEL d'un compte, localement puis à distance —
+ * jamais recalculé depuis les transactions : c'est le relevé (ou une
+ * saisie manuelle) qui fait foi. `source` trace d'où vient cette valeur
+ * (import PDF/CSV/Google Sheet, ou 'manual' par défaut) ; l'horodatage de
+ * l'enregistrement est posé automatiquement.
+ */
 export async function definirSoldeCompte(
   compteId: string,
   soldeCents: number | null,
   dateISO: string,
+  source: Compte['soldeSource'] = 'manual',
 ): Promise<void> {
+  const importeLe = soldeCents === null ? null : new Date().toISOString();
   const config = await configurationLocale();
   if (config) {
     await ecrireMeta(CLE_CACHE, {
       ...config,
-      comptes: config.comptes.map((c) => (c.id === compteId ? { ...c, solde: soldeCents } : c)),
+      comptes: config.comptes.map((c) =>
+        c.id === compteId
+          ? { ...c, solde: soldeCents, soldeDate: soldeCents === null ? null : dateISO, soldeSource: source, soldeImporteLe: importeLe }
+          : c,
+      ),
     });
   }
   const supabase = await obtenirSupabase();
@@ -254,6 +269,8 @@ export async function definirSoldeCompte(
     .update({
       balance_cents: soldeCents,
       balance_as_of: soldeCents === null ? null : dateISO,
+      balance_source: soldeCents === null ? null : source,
+      balance_imported_at: importeLe,
     })
     .eq('id', compteId);
 }

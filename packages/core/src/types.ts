@@ -23,6 +23,16 @@ export type SourceTransaction =
 
 export type StatutTransaction = 'pending' | 'validated';
 
+/**
+ * pointed   : rapprochée avec le relevé bancaire — une opération importée
+ *             l'est PAR DÉFINITION (elle vient du relevé), une opération
+ *             saisie manuellement ne l'est qu'une fois retrouvée sur un
+ *             relevé importé ensuite (voir `apparierOperationImportee`).
+ * unpointed : pas encore confirmée par un relevé. C'est elle qui explique
+ *             l'écart entre le solde réel (relevé) et le solde théorique.
+ */
+export type Pointage = 'pointed' | 'unpointed';
+
 export interface Transaction {
   id: string;
   date: DateISO;
@@ -36,6 +46,9 @@ export interface Transaction {
   commercant?: string;
   source: SourceTransaction;
   statut: StatutTransaction;
+  pointage: Pointage;
+  /** DateISO ou horodatage ISO du pointage. `null`/absent = jamais pointée. */
+  datePointage?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -222,8 +235,19 @@ export interface Compte {
   id: string;
   nom: string;
   type: 'courant' | 'provisions' | 'epargne';
-  /** `null` = solde non encore renseigné. Aucune projection n'est produite. */
+  /**
+   * Solde RÉEL, tel que constaté sur le relevé bancaire à `soldeDate` —
+   * jamais recalculé depuis les transactions quand un relevé le fournit
+   * explicitement (voir `calculerSoldeTheorique`). `null` = non encore
+   * renseigné : aucune projection n'est produite.
+   */
   solde: Cents | null;
+  /** Date du relevé dont vient `solde`. `null`/absent si `solde` est `null`. */
+  soldeDate?: DateISO | null;
+  /** D'où vient `solde` : import PDF/CSV, ou saisi à la main dans Réglages. */
+  soldeSource?: SourceTransaction | null;
+  /** Horodatage ISO de l'enregistrement de `solde` dans l'application. */
+  soldeImporteLe?: string | null;
 }
 
 /* ------------------------------------------------------------------ */

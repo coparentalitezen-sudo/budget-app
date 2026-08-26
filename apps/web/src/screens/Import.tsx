@@ -1,18 +1,34 @@
 import { useEffect, useState } from 'react';
 import type { Transaction } from '@budget/core/src/types.ts';
 import {
+  apparierOperationImportee, fusionnerRapprochement,
+  type OperationImportee, type ResultatAppariement,
+} from '@budget/core/src/rapprochement.ts';
+import {
   analyserLignes, detecterFormat, versTransactions,
   type FormatDetecte, type LigneAnalysee,
 } from '../import/parseur.ts';
-import { analyserRelevePdf } from '../import/releve.ts';
+import { analyserRelevePdf, extraireSoldesReleve, type SoldesReleve } from '../import/releve.ts';
 import { extraireTextePdf, recupererGoogleSheet } from '../import/sources.ts';
 import { detecterDoublons, type Suspicion } from '../db/doublons.ts';
 import { categoriserLot } from '../import/regles.ts';
 import { chargerRegles } from '../db/configuration.ts';
+import { definirSoldeCompte } from '../db/repository.ts';
 import { db, ecrireMeta, enregistrerTransaction, lireMeta, supprimerTransaction } from '../db/dexie.ts';
 import { Carte, Etiquette, Ligne } from '../components/ui.tsx';
 import { dateCourte, montant } from '../lib/format.ts';
 import { useConfiguration } from '../state/useDonnees.ts';
+
+/** Vue moteur d'une transaction, pour l'appariement (voir `rapprochement.ts`). */
+function operationDepuis(t: Transaction): OperationImportee {
+  return {
+    date: t.date,
+    montant: t.montant,
+    type: t.type,
+    compteId: t.compteId,
+    libelle: t.commercant ?? t.description ?? '',
+  };
+}
 
 type Source = 'csv_import' | 'google_sheet_import' | 'pdf_import';
 
@@ -32,10 +48,24 @@ interface Apercu {
   lignes: LigneAnalysee[];
   /** Lignes non transactionnelles écartées avant l'analyse (PDF uniquement). */
   administratives: number;
+  /** Toutes les opérations LUES, chacune avec un nouvel id — pointage:'pointed'. */
   candidates: Transaction[];
+  /** Même longueur/ordre que `candidates` : ce que devient chacune à la validation. */
+  appariements: ResultatAppariement[];
   suspicions: Suspicion[];
   categorisees: number;
   nonCategorisees: number;
+  /** Solde réel du relevé (PDF uniquement) — jamais recalculé, `null` si absent. */
+  soldes: SoldesReleve;
+}
+
+/** Un rapprochement automatique proposé mais pas assez sûr pour être appliqué seul. */
+interface FusionAConfirmer {
+  existanteId: string;
+  nouvelleId: string;
+  existanteLibelle: string;
+  nouvelleLibelle: string;
+  montant: number;
 }
 
 export function Import() {
@@ -48,6 +78,7 @@ export function Import() {
   const [dernierImport, setDernierImport] = useState<DernierImport | null>(null);
   const [annulationEnCours, setAnnulationEnCours] = useState(false);
   const [diagnosticOuvert, setDiagnosticOuvert] = useState(false);
+  const [aConfirmer, setAConfirmer] = useState<FusionAConfirmer[]>([]);
 
   useEffect(() => {
     void lireMeta<DernierImport | null>(CLE_DERNIER_IMPORT, null).then(setDernierImport);
@@ -79,20 +110,53 @@ export function Import() {
 
     const brutes = versTransactions(lignes, compte.id, source);
 
+    // Rapprochement AVANT catégorisation : chaque opération lue est
+    // comparée aux transactions saisies à la main mais pas encore
+    // pointées. Une correspondance suffisamment fiable évite un doublon
+    // (la transaction manuelle existante sera mise à jour, jamais
+    // recréée) — voir `apparierOperationImportee`. Une transaction déjà
+    // réclamée par une opération plus tôt dans CE même import n'est plus
+    // proposée à une autre (`dejaAppariees`).
+    const existantes = await db.transactions.toArray();
+    const nonPointees = existantes.filter((t) => t.pointage === 'unpointed');
+    const dejaAppariees = new Set<string>();
+    const appariements: ResultatAppariement[] = brutes.map((t) => {
+      const disponibles = nonPointees.filter((e) => !dejaAppariees.has(e.id));
+      const resultat = apparierOperationImportee(operationDepuis(t), disponibles);
+      if (resultat.decision === 'rapprocher' && resultat.meilleur) {
+        dejaAppariees.add(resultat.meilleur.transaction.id);
+      }
+      return resultat;
+    });
+
     // Catégorisation automatique : les règles PROPOSENT une catégorie,
-    // les transactions restent en attente de validation.
+    // les transactions restent en attente de validation. Sans effet pour
+    // une opération qui sera rapprochée : sa catégorie déjà saisie à la
+    // main est conservée telle quelle (voir `fusionnerRapprochement`).
     const regles = await chargerRegles();
     const bilan = categoriserLot(brutes, regles);
 
-    const existantes = await db.transactions.toArray();
-    const { suspicions } = detecterDoublons(bilan.transactions, existantes);
+    // Le rapprochement, plus précis (montant/compte/type EXACTS, date et
+    // libellé proches), traite déjà les correspondances fiables : inutile
+    // de signaler en plus un « doublon possible » pour ce qui sera fusionné.
+    const candidatsPourDoublons = bilan.transactions.filter(
+      (_, i) => appariements[i].decision !== 'rapprocher',
+    );
+    const { suspicions } = detecterDoublons(candidatsPourDoublons, existantes);
+
+    // Le solde RÉEL vient du relevé, jamais recalculé depuis les
+    // transactions (règle absolue) — absent hors PDF, ou si le relevé ne
+    // l'imprime pas explicitement.
+    const soldes = source === 'pdf_import' ? extraireSoldesReleve(lignesBrutes) : { depart: null, cloture: null };
 
     setApercu({
       source, format, lignes, administratives,
       candidates: bilan.transactions,
+      appariements,
       suspicions,
       categorisees: bilan.categorisees,
       nonCategorisees: bilan.nonCategorisees,
+      soldes,
     });
   };
 
@@ -112,28 +176,98 @@ export function Import() {
 
   const valider = async () => {
     if (!apercu) return;
-    // Les doublons suspectés sont importés en `pending`, jamais écartés :
-    // deux dépenses identiques le même jour sont parfois bien réelles.
-    for (const t of apercu.candidates) await enregistrerTransaction(t);
+    const maintenant = new Date().toISOString();
+    const idsCrees: string[] = [];
+    const fusions: FusionAConfirmer[] = [];
+    let rapprocheesAuto = 0;
+
+    for (let i = 0; i < apercu.candidates.length; i++) {
+      const t = apercu.candidates[i];
+      const a = apercu.appariements[i];
+
+      if (a.decision === 'rapprocher' && a.meilleur) {
+        // Rapprochement fiable : la transaction manuelle existante est mise
+        // à jour (catégorie, statut conservés), rien n'est créé — c'est ce
+        // qui évite le doublon.
+        await enregistrerTransaction(fusionnerRapprochement(a.meilleur.transaction, operationDepuis(t), maintenant));
+        rapprocheesAuto++;
+        continue;
+      }
+
+      // Les doublons suspectés sont importés en `pending`, jamais écartés :
+      // deux dépenses identiques le même jour sont parfois bien réelles.
+      await enregistrerTransaction(t);
+      idsCrees.push(t.id);
+
+      if (a.decision === 'ambigu' && a.meilleur) {
+        // Confiance insuffisante pour fusionner seul (règle 10) : les deux
+        // restent séparées jusqu'à confirmation explicite.
+        fusions.push({
+          existanteId: a.meilleur.transaction.id,
+          nouvelleId: t.id,
+          existanteLibelle: a.meilleur.transaction.commercant ?? a.meilleur.transaction.description ?? 'Sans libellé',
+          nouvelleLibelle: t.commercant ?? t.description ?? 'Sans libellé',
+          montant: t.montant,
+        });
+      }
+    }
+
+    // Le solde RÉEL du relevé devient le nouveau solde connu du compte —
+    // jamais recalculé depuis les transactions : c'est le relevé qui fait foi.
+    if (apercu.soldes.cloture && compte) {
+      await definirSoldeCompte(compte.id, apercu.soldes.cloture.montant, apercu.soldes.cloture.date, apercu.source);
+    }
+
     setResultat(
-      `${apercu.candidates.length} opération(s) importée(s) · ` +
-        `${apercu.categorisees} classée(s) automatiquement · ` +
-        `${apercu.nonCategorisees} à renseigner` +
+      `${apercu.candidates.length} opération(s) lue(s) · ` +
+        `${idsCrees.length} nouvelle(s)` +
+        (rapprocheesAuto > 0 ? ` · ${rapprocheesAuto} rapprochée(s) automatiquement` : '') +
+        (fusions.length > 0 ? ` · ${fusions.length} rapprochement(s) à confirmer` : '') +
+        ` · ${apercu.categorisees} classée(s) automatiquement · ${apercu.nonCategorisees} à renseigner` +
         (apercu.suspicions.length > 0 ? ` · ${apercu.suspicions.length} doublon(s) possible(s) signalé(s)` : '') +
-        `. Toutes restent en attente de validation ; retrouvez celles à renseigner ` +
-        `sur l’accueil ou dans Opérations.`,
+        (apercu.soldes.cloture
+          ? ` · Solde réel importé : ${montant(apercu.soldes.cloture.montant)} au ${dateCourte(apercu.soldes.cloture.date)}`
+          : '') +
+        `. Retrouvez les opérations à renseigner sur l’accueil ou dans Opérations.`,
     );
+
     // Mémorisé localement (pas de nouvelle table) pour permettre d'annuler
-    // tout l'import en un geste, tant qu'aucun autre import n'a eu lieu depuis.
+    // tout l'import en un geste. N'inclut QUE les opérations créées : une
+    // transaction rapprochée existait avant cet import, l'annuler ne doit
+    // jamais la supprimer.
     const enregistrement: DernierImport = {
-      ids: apercu.candidates.map((t) => t.id),
-      nombre: apercu.candidates.length,
-      quand: new Date().toISOString(),
+      ids: idsCrees,
+      nombre: idsCrees.length,
+      quand: maintenant,
       source: apercu.source,
     };
     await ecrireMeta(CLE_DERNIER_IMPORT, enregistrement);
     setDernierImport(enregistrement);
+    setAConfirmer(fusions);
     setApercu(null);
+  };
+
+  /**
+   * Confirme manuellement un rapprochement resté ambigu (règle 10) :
+   * fusionne la nouvelle opération dans la transaction manuelle existante,
+   * puis supprime la nouvelle — elle ne doit plus exister en double.
+   */
+  const confirmerFusion = async (f: FusionAConfirmer) => {
+    const existante = await db.transactions.get(f.existanteId);
+    const nouvelle = await db.transactions.get(f.nouvelleId);
+    if (!existante || !nouvelle) {
+      setAConfirmer((liste) => liste.filter((x) => x.nouvelleId !== f.nouvelleId));
+      return;
+    }
+    await enregistrerTransaction(
+      fusionnerRapprochement(existante, operationDepuis(nouvelle), new Date().toISOString()),
+    );
+    await supprimerTransaction(f.nouvelleId);
+    setAConfirmer((liste) => liste.filter((x) => x.nouvelleId !== f.nouvelleId));
+  };
+
+  const ignorerFusion = (nouvelleId: string) => {
+    setAConfirmer((liste) => liste.filter((x) => x.nouvelleId !== nouvelleId));
   };
 
   /**
@@ -164,6 +298,9 @@ export function Import() {
   };
 
   const illisibles = apercu?.lignes.filter((l) => l.erreur) ?? [];
+  const rapprocheesAuto = apercu?.appariements.filter((a) => a.decision === 'rapprocher').length ?? 0;
+  const aConfirmerCount = apercu?.appariements.filter((a) => a.decision === 'ambigu').length ?? 0;
+  const nouvellesCount = (apercu?.candidates.length ?? 0) - rapprocheesAuto;
 
   return (
     <div className="ecran">
@@ -262,7 +399,14 @@ export function Import() {
               <Ligne libelle="Format" valeur="Relevé PDF" />
             )}
             <Ligne libelle="Lignes lues" valeur={String(apercu.lignes.length + apercu.administratives)} />
-            <Ligne libelle="Transactions exploitables" valeur={String(apercu.candidates.length)} />
+            <Ligne libelle="Opérations exploitables" valeur={String(apercu.candidates.length)} />
+            <Ligne libelle="— dont nouvelles" valeur={String(nouvellesCount)} />
+            {rapprocheesAuto > 0 && (
+              <Ligne libelle="— dont rapprochées automatiquement" valeur={String(rapprocheesAuto)} />
+            )}
+            {aConfirmerCount > 0 && (
+              <Ligne libelle="— dont rapprochements à confirmer" valeur={String(aConfirmerCount)} />
+            )}
             {apercu.administratives > 0 && (
               <Ligne libelle="Lignes administratives ignorées" valeur={String(apercu.administratives)} />
             )}
@@ -270,6 +414,19 @@ export function Import() {
             <Ligne libelle="Doublons possibles" valeur={String(apercu.suspicions.length)} />
             <Ligne libelle="Catégorisées automatiquement" valeur={String(apercu.categorisees)} />
             <Ligne libelle="Sans catégorie" valeur={String(apercu.nonCategorisees)} />
+            {apercu.soldes.cloture && (
+              <Ligne
+                libelle="Solde réel du relevé"
+                valeur={`${montant(apercu.soldes.cloture.montant)} au ${dateCourte(apercu.soldes.cloture.date)}`}
+              />
+            )}
+            {rapprocheesAuto > 0 && (
+              <p className="note">
+                Les opérations rapprochées automatiquement mettent à jour une transaction
+                déjà saisie à la main (catégorie et statut conservés) au lieu de créer un
+                doublon.
+              </p>
+            )}
             <p className="note">
               {apercu.format
                 ? 'Le séparateur, la virgule décimale et le format de date sont détectés ' +
@@ -299,23 +456,33 @@ export function Import() {
           )}
 
           <Carte titre="Aperçu">
-            {apercu.candidates.slice(0, 12).map((t) => (
-              <div key={t.id} className="transaction">
-                <div className="transaction-principal">
-                  <span className="transaction-libelle">
-                    {dateCourte(t.date)} · {t.commercant?.slice(0, 40)}
-                  </span>
-                  <span className={`transaction-montant ton-${t.type === 'revenu' ? 'positif' : 'neutre'}`}>
-                    {t.type === 'revenu' ? '+' : '−'} {montant(t.montant)}
-                  </span>
+            {apercu.candidates.slice(0, 12).map((t, i) => {
+              const decision = apercu.appariements[i].decision;
+              return (
+                <div key={t.id} className="transaction">
+                  <div className="transaction-principal">
+                    <span className="transaction-libelle">
+                      {dateCourte(t.date)} · {t.commercant?.slice(0, 40)}
+                    </span>
+                    <span className={`transaction-montant ton-${t.type === 'revenu' ? 'positif' : 'neutre'}`}>
+                      {t.type === 'revenu' ? '+' : '−'} {montant(t.montant)}
+                    </span>
+                  </div>
+                  {decision !== 'nouvelle' && (
+                    <div className="transaction-meta">
+                      <Etiquette ton={decision === 'rapprocher' ? 'ok' : 'attente'}>
+                        {decision === 'rapprocher' ? 'Rapprochée automatiquement' : 'Rapprochement à confirmer'}
+                      </Etiquette>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {apercu.candidates.length > 12 && (
               <p className="note">… et {apercu.candidates.length - 12} autres.</p>
             )}
             <button className="bouton bouton-principal" onClick={() => void valider()}>
-              Importer {apercu.candidates.length} transaction(s) en attente
+              Importer {apercu.candidates.length} opération(s) lue(s)
             </button>
             <button className="bouton" onClick={() => setApercu(null)}>Annuler</button>
           </Carte>
@@ -353,6 +520,31 @@ export function Import() {
             )}
           </Carte>
         </>
+      )}
+
+      {aConfirmer.length > 0 && (
+        <Carte titre={`Rapprochements à confirmer (${aConfirmer.length})`}>
+          <p className="note">
+            Une opération importée ressemble à une transaction déjà saisie à la
+            main, sans être assez sûre pour la fusionner automatiquement.
+            Vérifiez : s’il s’agit bien de la même opération, « Fusionner »
+            supprime le doublon et pointe l’opération existante ; sinon,
+            « Garder séparées » laisse les deux telles quelles.
+          </p>
+          {aConfirmer.map((f) => (
+            <div key={f.nouvelleId} className="scenario">
+              <div className="scenario-tete">
+                <span>{montant(f.montant)}</span>
+              </div>
+              <p className="alerte-detail">Saisie existante : {f.existanteLibelle}</p>
+              <p className="alerte-detail">Opération importée : {f.nouvelleLibelle}</p>
+              <div className="bascule">
+                <button className="actif" onClick={() => void confirmerFusion(f)}>Fusionner</button>
+                <button onClick={() => ignorerFusion(f.nouvelleId)}>Garder séparées</button>
+              </div>
+            </div>
+          ))}
+        </Carte>
       )}
     </div>
   );

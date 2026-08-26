@@ -265,5 +265,10 @@ export function versTransactions(
       // Import = toujours `pending` : rien n'entre dans les comptes sans
       // un regard humain, surtout sans catégorie attribuée.
       statut: 'pending' as const,
+      // Une opération importée d'un relevé bancaire est pointée PAR
+      // DÉFINITION : elle EST le relevé. `Import.tsx` peut ensuite la
+      // fusionner dans une saisie manuelle existante plutôt que de la
+      // créer telle quelle (voir `apparierOperationImportee`).
+      pointage: 'pointed' as const,
     }));
 }

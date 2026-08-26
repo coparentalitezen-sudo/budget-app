@@ -38,11 +38,16 @@ function versLigne(t: Transaction, userId: string) {
     source: t.source,
     description: t.description ?? null,
     merchant: t.commercant ?? null,
+    // `pointed_at` suit le même principe que `deleted_at` : NULL = non
+    // pointée, un horodatage = pointée (voir la migration 0012). `pointage`
+    // ne porte donc lui-même aucune colonne dédiée côté base.
+    pointed_at: t.pointage === 'pointed' ? (t.datePointage ?? new Date().toISOString()) : null,
   };
 }
 
 /** Traduit une ligne SQL vers le modèle du moteur. */
 function versTransaction(ligne: Record<string, unknown>): Transaction {
+  const pointedAt = (ligne.pointed_at as string | null) ?? null;
   return {
     id: ligne.id as string,
     date: ligne.occurred_on as string,
@@ -60,6 +65,8 @@ function versTransaction(ligne: Record<string, unknown>): Transaction {
     // synchronisation redevenait alors invisible dans « À renseigner »,
     // qui exige `statut === 'pending'` (`undefined !== 'pending'`).
     statut: ligne.status as Transaction['statut'],
+    pointage: pointedAt !== null ? 'pointed' : 'unpointed',
+    datePointage: pointedAt,
   };
 }
 

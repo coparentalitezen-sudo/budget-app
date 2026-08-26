@@ -79,6 +79,57 @@ export function deduireDateSansAnnee(
   return null;
 }
 
+export interface SoldeReleve {
+  /** Négatif si le compte est débiteur (à découvert). */
+  montant: Cents;
+  date: string;
+}
+
+export interface SoldesReleve {
+  /** Solde imprimé en haut du relevé, avant la première opération. */
+  depart: SoldeReleve | null;
+  /** Solde de clôture, imprimé après la dernière opération — celui qui fait foi. */
+  cloture: SoldeReleve | null;
+}
+
+/**
+ * « SOLDE CRÉDITEUR AU 15.06.2026 » / « SOLDE DÉBITEUR AU ... » : le VRAI
+ * solde bancaire à une date, jamais un total débit/crédit de la période
+ * (motif textuel différent, jamais confondu). Un relevé standard en imprime
+ * deux : celui de départ (avant la première opération) et celui de clôture
+ * (après la dernière) — le plus ancien et le plus récent des soldes
+ * trouvés, respectivement, ce qui reste correct même si l'un des deux
+ * manque. S'il n'y en a qu'un seul, il est traité comme celui de CLÔTURE
+ * (le plus utile en pratique, explicitement privilégié).
+ */
+const MOTIF_SOLDE_RELEVE = /solde\s+(cr[ée]diteur|d[ée]biteur)\s+au\s+(\d{1,2}[./]\d{1,2}[./]\d{2,4})/i;
+const MOTIF_MONTANT_APRES_SOLDE = /(\d{1,3}(?:[  ]?\d{3})*(?:[.,]\d{2}))/;
+
+export function extraireSoldesReleve(lignes: string[]): SoldesReleve {
+  const trouves: SoldeReleve[] = [];
+
+  for (const ligne of lignes) {
+    const m = MOTIF_SOLDE_RELEVE.exec(ligne);
+    if (!m) continue;
+    const date = analyserDate(m[2]);
+    if (date === null) continue;
+
+    const mMontant = MOTIF_MONTANT_APRES_SOLDE.exec(ligne.slice(m.index + m[0].length));
+    if (!mMontant) continue;
+    const brut = analyserMontant(mMontant[1]);
+    if (brut === null) continue;
+
+    const debiteur = /d[ée]biteur/i.test(m[1]);
+    trouves.push({ montant: debiteur ? -Math.abs(brut) : Math.abs(brut), date });
+  }
+
+  if (trouves.length === 0) return { depart: null, cloture: null };
+  trouves.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  if (trouves.length === 1) return { depart: null, cloture: trouves[0] };
+  return { depart: trouves[0], cloture: trouves[trouves.length - 1] };
+}
+
 /**
  * Total des mouvements du relevé : imprimé une seule fois, immédiatement
  * après la DERNIÈRE vraie opération, suivi du solde de clôture puis d'un

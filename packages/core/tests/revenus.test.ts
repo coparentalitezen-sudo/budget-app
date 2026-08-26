@@ -18,6 +18,7 @@ const revenu = (montant: number, libelle: string): Transaction => ({
   commercant: libelle,
   source: 'csv_import',
   statut: 'validated',
+  pointage: 'pointed',
 });
 
 describe('Sans encaissement enregistré', () => {

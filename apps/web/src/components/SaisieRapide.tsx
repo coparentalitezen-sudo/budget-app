@@ -60,6 +60,11 @@ export function SaisieRapide({ onFerme }: { onFerme: () => void }) {
       commercant: libelle || undefined,
       source: 'manual',
       statut: 'validated',
+      // Une saisie manuelle n'est pas encore confirmée par le relevé
+      // bancaire : elle ne devient « pointed » que si un import ultérieur
+      // la retrouve (voir `apparierOperationImportee`), ou si l'utilisateur
+      // la pointe lui-même.
+      pointage: 'unpointed',
     };
     await enregistrerTransaction(transaction);
     onFerme();

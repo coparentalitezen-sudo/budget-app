@@ -79,6 +79,19 @@ body {
   color: var(--texte-doux); margin-top: 8px;
 }
 
+/* --- Solde réel (relevé) / solde théorique (estimation courante) --- */
+.carte-soldes { display: flex; gap: 0; padding: 0; overflow: hidden; }
+.solde-bloc { flex: 1; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.solde-bloc + .solde-bloc { border-left: 1px solid var(--bordure); }
+.solde-libelle {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--texte-doux); font-weight: 600;
+}
+.solde-detail { font-size: 12px; color: var(--texte-doux); }
+/* Mis en avant comme ESTIMATION de la situation actuelle, distincte du fait constaté. */
+.solde-bloc-theorique { background: var(--surface-haute); }
+.solde-bloc-theorique .solde-libelle { color: var(--accent); }
+
 .icone-badge {
   display: inline-flex; align-items: center; justify-content: center;
   width: 34px; height: 34px; border-radius: 10px; font-size: 17px; flex: none;

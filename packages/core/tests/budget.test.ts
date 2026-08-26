@@ -122,6 +122,7 @@ describe('Reste à dépenser', () => {
     compteId: 'cpt_courant',
     source: 'manual',
     statut: 'validated',
+    pointage: 'unpointed',
   });
 
   test('sans aucune dépense, le reste est égal aux enveloppes', () => {
@@ -154,6 +155,7 @@ describe('Reste à dépenser', () => {
         compteId: 'cpt_courant',
         source: 'manual',
         statut: 'validated',
+        pointage: 'unpointed',
       },
     ];
     const s = synthetiserMois(foyer2026, transactions, AOUT);
@@ -209,6 +211,7 @@ describe('Vue hebdomadaire', () => {
         compteId: 'cpt_courant',
         source: 'manual',
         statut: 'validated',
+        pointage: 'unpointed',
       },
     ];
     const h = synthetiserSemaine(foyer2026, transactions, '2026-08-05');

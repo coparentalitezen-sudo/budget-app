@@ -159,6 +159,7 @@ describe('Alertes', () => {
         compteId: 'cpt_courant',
         source: 'manual',
         statut: 'validated',
+        pointage: 'unpointed',
       },
     ];
     const resultat = genererAlertes(foyer2026, transactions, '2026-08-23');

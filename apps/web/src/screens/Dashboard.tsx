@@ -2,6 +2,7 @@ import { synthetiserMois, synthetiserSemaine } from '@budget/core/src/budget.ts'
 import { situationVirement } from '@budget/core/src/tresorerie.ts';
 import { projeterSolde } from '@budget/core/src/projection.ts';
 import { genererAlertes } from '@budget/core/src/alertes.ts';
+import { calculerSoldeTheorique } from '@budget/core/src/rapprochement.ts';
 import { periodeDe, joursDansMois, finDeMois } from '@budget/core/src/periode.ts';
 import { Anneau, PALETTE_ANNEAU, type PartAnneau } from '../components/Anneau.tsx';
 import {
@@ -9,7 +10,7 @@ import {
   COULEUR_REVENUS, COULEUR_DEPENSES, COULEUR_EPARGNE,
 } from '../components/ui.tsx';
 import {
-  aujourdhuiISO, moisPilule, montant, montantSigne, nomMois, pourcent, jourMois,
+  aujourdhuiISO, dateCourte, moisPilule, montant, montantSigne, nomMois, pourcent, jourMois,
 } from '../lib/format.ts';
 import { useConfiguration, useTransactions } from '../state/useDonnees.ts';
 import { estARenseigner } from './Transactions.tsx';
@@ -47,6 +48,12 @@ export function Dashboard({
   const aller = (cible: CibleNavigation) => () => onNaviguer?.(cible);
 
   const aRenseigner = transactions.filter(estARenseigner).length;
+
+  // Solde réel (relevé) / solde théorique (relevé + opérations non
+  // pointées) : calcul entièrement dans `calculerSoldeTheorique`, jamais
+  // recalculé ici — voir packages/core/src/rapprochement.ts.
+  const compteCourant = config.comptes.find((c) => c.type === 'courant');
+  const soldeCompte = compteCourant ? calculerSoldeTheorique(transactions, compteCourant) : null;
 
   /* --- Anneau des dépenses : issu de mois.categories ----------------- */
   const totalDepense = mois.depensesVariables;
@@ -126,6 +133,28 @@ export function Dashboard({
           <span>{semaine.joursRestantsMois} jours restants</span>
         </div>
       </section>
+
+      {/* 1bis. Solde réel (relevé) / solde théorique (relevé + non pointé) */}
+      {soldeCompte && soldeCompte.soldeReel !== null && (
+        <section className="carte carte-soldes">
+          <div className="solde-bloc">
+            <span className="solde-libelle">Solde réel</span>
+            <Valeur texte={montant(soldeCompte.soldeReel)} taille="grande" />
+            {soldeCompte.soldeReelDate && (
+              <span className="solde-detail">Relevé au {dateCourte(soldeCompte.soldeReelDate)}</span>
+            )}
+          </div>
+          <div className="solde-bloc solde-bloc-theorique">
+            <span className="solde-libelle">Solde théorique</span>
+            <Valeur texte={montant(soldeCompte.soldeTheorique)} taille="grande" />
+            <span className="solde-detail">
+              {soldeCompte.operationsNonPointees.length === 0
+                ? 'Aucune opération non pointée'
+                : `${soldeCompte.operationsNonPointees.length} opération(s) non pointée(s) · ${montantSigne(soldeCompte.ecartNonPointe)}`}
+            </span>
+          </div>
+        </section>
+      )}
 
       {/* 2. Deux anneaux côte à côte */}
       <div className="colonnes colonnes-anneaux">

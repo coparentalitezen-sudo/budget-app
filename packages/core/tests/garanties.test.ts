@@ -151,6 +151,7 @@ describe('7. Les provisions ne comptent jamais comme épargne', () => {
         compteDestinationId: 'cpt_provisions',
         source: 'manual',
         statut: 'validated',
+        pointage: 'unpointed',
       },
     ];
     const realise = calculerRealise(foyer2026, transactions, '2026-09');

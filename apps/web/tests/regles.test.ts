@@ -14,7 +14,7 @@ const regle = (p: Partial<RegleCategorisation>): RegleCategorisation => ({
 const transaction = (libelle: string, categorieId: string | null = null): Transaction => ({
   id: crypto.randomUUID(), date: '2026-09-03', montant: 4520, type: 'depense',
   categorieId, compteId: 'cpt', commercant: libelle,
-  source: 'csv_import', statut: 'pending',
+  source: 'csv_import', statut: 'pending', pointage: 'pointed',
 });
 
 describe('Correspondance', () => {

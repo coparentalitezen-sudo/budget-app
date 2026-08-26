@@ -9,7 +9,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   analyserPeriodeReleve, analyserRelevePdf, deduireDateSansAnnee,
-  detecterColonnesOperations, estLigneAdministrative,
+  detecterColonnesOperations, estLigneAdministrative, extraireSoldesReleve,
 } from '../src/import/releve.ts';
 import { versTransactions } from '../src/import/parseur.ts';
 
@@ -358,5 +358,42 @@ describe('Un débit ne devient jamais un crédit (signe séparé par l’extract
     assert.equal(lignes.length, 1);
     assert.equal(lignes[0].sens, 'debit');
     assert.equal(lignes[0].montant, 4520);
+  });
+});
+
+describe('Extraction du solde réel (départ / clôture), jamais confondu avec un total', () => {
+  test('deux soldes trouvés : le plus ancien est le départ, le plus récent la clôture', () => {
+    const lignes = [
+      'SOLDE CREDITEUR AU 15.06.2026\t117,41',
+      '15.06\tVIR CPTE A CPTE EMIS\t16.06\t50,00',
+      'TOTAL DES OPERATIONS\t6 976,53\t8 682,27',
+      'SOLDE CREDITEUR AU 15.07.2026\t1 823,15',
+    ];
+    const s = extraireSoldesReleve(lignes);
+    assert.deepEqual(s.depart, { montant: 11741, date: '2026-06-15' });
+    assert.deepEqual(s.cloture, { montant: 182315, date: '2026-07-15' });
+  });
+
+  test('un seul solde trouvé est traité comme celui de clôture', () => {
+    const s = extraireSoldesReleve(['SOLDE CREDITEUR AU 15.07.2026\t1 823,15']);
+    assert.equal(s.depart, null);
+    assert.deepEqual(s.cloture, { montant: 182315, date: '2026-07-15' });
+  });
+
+  test('aucun solde dans le texte -> les deux restent null (jamais 0)', () => {
+    const s = extraireSoldesReleve(['15.06\tVIR CPTE A CPTE EMIS\t16.06\t50,00']);
+    assert.equal(s.depart, null);
+    assert.equal(s.cloture, null);
+  });
+
+  test('un compte débiteur (découvert) donne un solde négatif', () => {
+    const s = extraireSoldesReleve(['SOLDE DEBITEUR AU 15.07.2026\t250,00']);
+    assert.equal(s.cloture?.montant, -25000);
+  });
+
+  test('un total débit/crédit voisin n’est jamais pris pour le solde bancaire', () => {
+    const s = extraireSoldesReleve(['TOTAL DES OPERATIONS\t6 976,53\t8 682,27']);
+    assert.equal(s.depart, null);
+    assert.equal(s.cloture, null);
   });
 });

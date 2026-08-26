@@ -36,6 +36,7 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
   const [statut, setStatut] = useState<StatutTransaction | 'tous'>('tous');
   const [categorieId, setCategorieId] = useState<string>('toutes');
   const [source, setSource] = useState<SourceTransaction | 'toutes'>('toutes');
+  const [pointage, setPointage] = useState<'toutes' | 'pointed' | 'unpointed'>('toutes');
   const [enCoursRecat, setEnCoursRecat] = useState(false);
   const [resultatRecat, setResultatRecat] = useState<string | null>(null);
   const [suppressionEnCours, setSuppressionEnCours] = useState<string | null>(null);
@@ -80,6 +81,19 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
   };
 
   /**
+   * Pointe / dépointe une transaction à la main — pour corriger une
+   * décision automatique du rapprochement, ou pointer soi-même une saisie
+   * manuelle que l'on sait exacte sans attendre un import.
+   */
+  const basculerPointage = async (t: Transaction) => {
+    await enregistrerTransaction({
+      ...t,
+      pointage: t.pointage === 'pointed' ? 'unpointed' : 'pointed',
+      datePointage: t.pointage === 'pointed' ? null : new Date().toISOString(),
+    });
+  };
+
+  /**
    * Suppression groupée de tout un lot (ex. un import entier resté sans
    * identifiant, ou tout un ensemble filtré) : même suppression LOGIQUE,
    * une par une, mais en un seul geste. Toujours confirmée avec le nombre
@@ -120,6 +134,7 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
       .filter((t) => (statut === 'tous' ? true : t.statut === statut))
       .filter((t) => (categorieId === 'toutes' ? true : t.categorieId === categorieId))
       .filter((t) => (source === 'toutes' ? true : t.source === source))
+      .filter((t) => (pointage === 'toutes' ? true : t.pointage === pointage))
       .filter((t) =>
         terme === ''
           ? true
@@ -128,7 +143,7 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
               .some((v) => v!.toLowerCase().includes(terme)),
       )
       .sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [transactions, recherche, type, statut, categorieId, source]);
+  }, [transactions, recherche, type, statut, categorieId, source, pointage]);
 
   const parJour = useMemo(() => {
     const groupes = new Map<string, typeof filtrees>();
@@ -259,6 +274,11 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
             <option key={s} value={s}>{LIBELLE_SOURCE[s]}</option>
           ))}
         </select>
+        <select value={pointage} onChange={(e) => setPointage(e.target.value as typeof pointage)}>
+          <option value="toutes">Toutes (pointées ou non)</option>
+          <option value="pointed">Pointées</option>
+          <option value="unpointed">Non pointées</option>
+        </select>
       </div>
 
       <p className="compteur">
@@ -329,6 +349,15 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
                     {t.statut === 'pending' ? 'En attente' : 'Validée'}
                   </Etiquette>
                   <Etiquette>{LIBELLE_SOURCE[t.source]}</Etiquette>
+                  <button
+                    className="etiquette-bouton"
+                    onClick={() => void basculerPointage(t)}
+                    title={t.pointage === 'pointed' ? 'Dépointer' : 'Pointer manuellement'}
+                  >
+                    <Etiquette ton={t.pointage === 'pointed' ? 'ok' : undefined}>
+                      {t.pointage === 'pointed' ? 'Pointée' : 'À pointer'}
+                    </Etiquette>
+                  </button>
                   {suspect && <Etiquette ton="doublon">Doublon possible</Etiquette>}
                   <button
                     className="lien lien-detail"

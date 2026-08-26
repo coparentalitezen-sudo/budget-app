@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { eur } from '@budget/core/src/money.ts';
 import { rapprocherCompte } from '@budget/core/src/rapprochement.ts';
 import { definirSoldeCompte } from '../db/repository.ts';
+import { enregistrerTransaction } from '../db/dexie.ts';
 import { Carte, Etiquette, Ligne, Vide } from '../components/ui.tsx';
 import { dateCourte, montant } from '../lib/format.ts';
 import { useConfiguration, useTransactions } from '../state/useDonnees.ts';
@@ -75,11 +76,21 @@ export function Rapprochement() {
   const nonPointees = resultat && pointees ? resultat.lignes.length - pointees.size : 0;
 
   const confirmer = async () => {
-    if (!resultat || !equilibre) return;
+    if (!resultat || !equilibre || !pointees) return;
     setEnCours(true);
     setMessage(null);
     try {
-      await definirSoldeCompte(compteId, resultat.soldeCloture, resultat.dateCloture);
+      const maintenant = new Date().toISOString();
+      // Les opérations cochées viennent d'être vérifiées une à une contre
+      // le relevé papier : elles deviennent pointées pour de bon, pas
+      // seulement le temps de cet écran — c'est ce qui alimente ensuite le
+      // solde théorique de l'accueil.
+      for (const l of resultat.lignes) {
+        if (pointees.has(l.transaction.id) && l.transaction.pointage !== 'pointed') {
+          await enregistrerTransaction({ ...l.transaction, pointage: 'pointed', datePointage: maintenant });
+        }
+      }
+      await definirSoldeCompte(compteId, resultat.soldeCloture, resultat.dateCloture, 'manual');
       setMessage(`Solde du compte confirmé au ${dateCourte(resultat.dateCloture)}.`);
     } catch (e) {
       setMessage(`Erreur : ${e instanceof Error ? e.message : String(e)}`);
