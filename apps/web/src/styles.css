@@ -158,6 +158,10 @@ body {
 .transaction-montant { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .transaction-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 
+.transaction-pointable { display: flex; align-items: flex-start; gap: 10px; }
+.transaction-case { margin-top: 4px; flex-shrink: 0; }
+.transaction-corps { flex: 1; min-width: 0; }
+
 .categorie-tete, .categorie-pied {
   display: flex; justify-content: space-between; font-size: 14px; gap: 12px;
 }

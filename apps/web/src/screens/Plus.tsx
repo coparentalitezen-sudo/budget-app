@@ -10,7 +10,8 @@ export interface EntreePlus {
 const ENTREES: EntreePlus[] = [
   { cle: 'credits', libelle: 'Crédits', description: 'Amortissement, remboursement anticipé', emoji: '🏦' },
   { cle: 'provisions', libelle: 'Provisions', description: 'Charges annuelles lissées', emoji: '📅' },
-  { cle: 'import', libelle: 'Import', description: 'Relevés bancaires, rapprochement', emoji: '📥' },
+  { cle: 'import', libelle: 'Import', description: 'Relevés bancaires (PDF, CSV)', emoji: '📥' },
+  { cle: 'rapprochement', libelle: 'Rapprochement', description: 'Vérifier le solde face au relevé', emoji: '🧮' },
   { cle: 'configurer', libelle: 'Configuration', description: 'Revenus, charges, enveloppes', emoji: '⚙️' },
   { cle: 'parametres', libelle: 'Réglages', description: 'Synchronisation, comptes, session', emoji: '🔧' },
 ];

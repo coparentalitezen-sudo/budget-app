@@ -13,4 +13,5 @@ export * from './tresorerie.ts';
 export * from './inconnues.ts';
 export * from './projection.ts';
 export * from './alertes.ts';
+export * from './rapprochement.ts';
 export { foyer2026, CATEGORIES } from './fixtures/foyer2026.ts';

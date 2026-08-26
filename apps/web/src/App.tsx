@@ -7,6 +7,7 @@ import { Credits } from './screens/Credits.tsx';
 import { Provisions } from './screens/Provisions.tsx';
 import { Parametres } from './screens/Parametres.tsx';
 import { Import } from './screens/Import.tsx';
+import { Rapprochement } from './screens/Rapprochement.tsx';
 import { Configurer } from './screens/Configurer.tsx';
 import { Plus } from './screens/Plus.tsx';
 import { SaisieRapide } from './components/SaisieRapide.tsx';
@@ -17,10 +18,10 @@ import { supabaseConfigure } from './lib/supabase.ts';
 
 type Onglet =
   | 'accueil' | 'transactions' | 'budget' | 'epargne'
-  | 'credits' | 'provisions' | 'import' | 'configurer' | 'parametres' | 'plus';
+  | 'credits' | 'provisions' | 'import' | 'rapprochement' | 'configurer' | 'parametres' | 'plus';
 
 /** Sections regroupées sous « Plus », pour que la navigation reste à 5 entrées. */
-const SOUS_PLUS: Onglet[] = ['credits', 'provisions', 'import', 'configurer', 'parametres'];
+const SOUS_PLUS: Onglet[] = ['credits', 'provisions', 'import', 'rapprochement', 'configurer', 'parametres'];
 
 const ONGLETS: { cle: Onglet; libelle: string; icone: string }[] = [
   { cle: 'accueil', libelle: 'Accueil', icone: '🏠' },
@@ -109,6 +110,7 @@ function Application() {
         {onglet === 'credits' && <Credits />}
         {onglet === 'provisions' && <Provisions />}
         {onglet === 'import' && <Import />}
+        {onglet === 'rapprochement' && <Rapprochement />}
         {onglet === 'configurer' && <Configurer />}
         {onglet === 'parametres' && <Parametres />}
         {onglet === 'plus' && <Plus onOuvrir={(cle) => setOnglet(cle as Onglet)} />}
