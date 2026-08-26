@@ -163,15 +163,20 @@ export async function synchroniser(): Promise<ResultatSync> {
   }
 
   /* --- Réception des changements distants ------------------------- */
-  // Réparation ponctuelle : `versTransaction` a longtemps écrit
-  // `statut: undefined` sur CHAQUE transaction reçue (mauvais nom de
-  // colonne), rendant silencieusement invisibles dans « À renseigner »
-  // toutes les transactions déjà passées par une synchronisation. Une
-  // synchronisation COMPLÈTE (jamais incrémentale), une seule fois, répare
-  // les données locales déjà corrompues par cet ancien bug — les suivantes
-  // redeviennent incrémentales normalement.
-  const reparationFaite = await lireMeta<boolean>('reparationStatutSync', false);
-  const depuis = reparationFaite ? await lireMeta<string | null>('derniereSync', null) : null;
+  // Réparations ponctuelles : un champ ajouté après coup (`statut` puis
+  // `pointage`) n'existe pas sur les enregistrements locaux déjà en cache
+  // avant le déploiement qui l'a introduit. Tant que ce cache n'a pas été
+  // rafraîchi, toute modification locale de ces lignes (catégoriser,
+  // valider...) repousse un objet où le champ manquant vaut `undefined` —
+  // et `versLigne` l'interprète comme sa valeur « par défaut » (non
+  // pointée, notamment), écrasant SILENCIEUSEMENT la bonne valeur côté
+  // serveur. Une synchronisation COMPLÈTE (jamais incrémentale), une seule
+  // fois par champ concerné, répare le cache local avant qu'il ne puisse
+  // écraser quoi que ce soit — les suivantes redeviennent incrémentales.
+  const reparationStatutFaite = await lireMeta<boolean>('reparationStatutSync', false);
+  const reparationPointageFaite = await lireMeta<boolean>('reparationPointageSync', false);
+  const reparationsFaites = reparationStatutFaite && reparationPointageFaite;
+  const depuis = reparationsFaites ? await lireMeta<string | null>('derniereSync', null) : null;
   let requete = supabase.from('transactions').select('*').is('deleted_at', null);
   if (depuis) requete = requete.gt('updated_at', depuis);
 
@@ -191,7 +196,8 @@ export async function synchroniser(): Promise<ResultatSync> {
     await db.transactions.bulkPut(lignes.map(versTransaction));
   }
   await ecrireMeta('derniereSync', new Date().toISOString());
-  if (!reparationFaite) await ecrireMeta('reparationStatutSync', true);
+  if (!reparationStatutFaite) await ecrireMeta('reparationStatutSync', true);
+  if (!reparationPointageFaite) await ecrireMeta('reparationPointageSync', true);
 
   return {
     etat: 'ok',
