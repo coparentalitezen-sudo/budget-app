@@ -91,12 +91,13 @@ export function Dashboard({
   const alertesFortes = alertes.filter((a) => a.niveau !== 'info').slice(0, 3);
 
   /* --- Objectif épargne : ratio d'affichage de la jauge semi-circulaire.
-   * Le ratio n'est qu'un affichage de deux valeurs déjà calculées par le
-   * moteur (`capaciteEpargneBudgetaire`, `objectifEpargne`) ; aucune donnée
-   * financière n'est produite ici. --------------------------------------- */
-  const ratioObjectif = epargne.objectifEpargne > 0
-    ? Math.max(0, epargne.capaciteEpargneBudgetaire / epargne.objectifEpargne)
-    : 0;
+   * Le ratio n'est qu'un affichage d'une valeur déjà calculée par le moteur
+   * (`mois.progressionEpargne` = épargne RÉELLEMENT réalisée / objectif) ;
+   * aucune donnée financière n'est produite ici. Volontairement PAS basé
+   * sur `capaciteEpargneBudgetaire` (ce que le budget pourrait dégager) :
+   * remplir un anneau de progression avec une capacité théorique donnait
+   * l'impression trompeuse qu'un montant avait déjà été épargné. -------- */
+  const ratioEpargneReelle = Math.max(0, mois.progressionEpargne);
 
   const ratioHero = mois.budgetVariable > 0 ? mois.depensesVariables / mois.budgetVariable : 0;
 
@@ -269,20 +270,25 @@ export function Dashboard({
 
         <Carte titre="Objectif épargne">
           <JaugeSemiCirculaire
-            ratio={ratioObjectif}
-            valeurCentre={montant(epargne.objectifEpargne)}
-            labelCentre="objectif"
+            ratio={ratioEpargneReelle}
+            valeurCentre={montant(mois.epargneRealisee)}
+            labelCentre={`épargnés sur ${montant(epargne.objectifEpargne)}`}
             couleur={COULEUR_EPARGNE}
           />
           <div className="categorie-pied">
-            <span>{montant(epargne.capaciteEpargneBudgetaire)} / {montant(epargne.objectifEpargne)}</span>
-            <span className={epargne.atteignable ? 'ton-positif' : 'ton-negatif'}>
-              {pourcent(ratioObjectif)}
+            <span>{montant(mois.epargneRealisee)} / {montant(epargne.objectifEpargne)}</span>
+            <span className={mois.progressionEpargne >= 1 ? 'ton-positif' : undefined}>
+              {pourcent(mois.progressionEpargne)}
             </span>
           </div>
+          <p className="note">
+            Capacité budgétaire ce mois-ci (ce que le budget pourrait dégager,
+            pas un montant déjà mis de côté) : {montant(epargne.capaciteEpargneBudgetaire)}.
+          </p>
           {!epargne.atteignable && (
             <p className="note note-attention">
-              Écart {montant(epargne.ecartObjectif)} — objectif inchangé.
+              Objectif non atteignable avec le budget actuel — écart{' '}
+              {montant(epargne.ecartObjectif)}, objectif inchangé.
             </p>
           )}
           <p className="note">
