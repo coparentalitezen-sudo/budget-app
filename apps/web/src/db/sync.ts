@@ -54,7 +54,12 @@ function versTransaction(ligne: Record<string, unknown>): Transaction {
     description: (ligne.description as string | null) ?? undefined,
     commercant: (ligne.merchant as string | null) ?? undefined,
     source: ligne.source as Transaction['source'],
-    statut: ligne.statut as Transaction['statut'],
+    // Colonne SQL : `status` (voir `versLigne` ci-dessus), pas `statut` —
+    // `ligne.statut` n'existe pas sur la ligne reçue de Supabase et valait
+    // donc toujours `undefined` ici. Une transaction reçue par une
+    // synchronisation redevenait alors invisible dans « À renseigner »,
+    // qui exige `statut === 'pending'` (`undefined !== 'pending'`).
+    statut: ligne.status as Transaction['statut'],
   };
 }
 
@@ -151,7 +156,15 @@ export async function synchroniser(): Promise<ResultatSync> {
   }
 
   /* --- Réception des changements distants ------------------------- */
-  const depuis = await lireMeta<string | null>('derniereSync', null);
+  // Réparation ponctuelle : `versTransaction` a longtemps écrit
+  // `statut: undefined` sur CHAQUE transaction reçue (mauvais nom de
+  // colonne), rendant silencieusement invisibles dans « À renseigner »
+  // toutes les transactions déjà passées par une synchronisation. Une
+  // synchronisation COMPLÈTE (jamais incrémentale), une seule fois, répare
+  // les données locales déjà corrompues par cet ancien bug — les suivantes
+  // redeviennent incrémentales normalement.
+  const reparationFaite = await lireMeta<boolean>('reparationStatutSync', false);
+  const depuis = reparationFaite ? await lireMeta<string | null>('derniereSync', null) : null;
   let requete = supabase.from('transactions').select('*').is('deleted_at', null);
   if (depuis) requete = requete.gt('updated_at', depuis);
 
@@ -171,6 +184,7 @@ export async function synchroniser(): Promise<ResultatSync> {
     await db.transactions.bulkPut(lignes.map(versTransaction));
   }
   await ecrireMeta('derniereSync', new Date().toISOString());
+  if (!reparationFaite) await ecrireMeta('reparationStatutSync', true);
 
   return {
     etat: 'ok',
