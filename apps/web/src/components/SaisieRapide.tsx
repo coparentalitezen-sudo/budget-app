@@ -16,6 +16,26 @@ export function SaisieRapide({ onFerme }: { onFerme: () => void }) {
   const [montantTexte, setMontantTexte] = useState('');
   const [categorieId, setCategorieId] = useState(variables[0]?.id ?? '');
   const [type, setType] = useState<TypeTransaction>('depense');
+
+  // Un revenu ne propose que des catégories de revenu, tout le reste que
+  // des catégories de dépense — jamais les deux mélangées dans la même
+  // liste (une catégorie de revenu assignée à une dépense fausserait le
+  // calcul des dépenses variables, voir `calculerRealise`).
+  const categoriesProposees = config.categories.filter((c) =>
+    type === 'revenu' ? c.nature === 'revenu' : c.nature !== 'revenu',
+  );
+
+  const changerType = (nouveauType: TypeTransaction) => {
+    setType(nouveauType);
+    const nouvellesCategories = config.categories.filter((c) =>
+      nouveauType === 'revenu' ? c.nature === 'revenu' : c.nature !== 'revenu',
+    );
+    // La catégorie déjà choisie reste sélectionnée si elle est toujours
+    // proposée (ex. dépense -> facture) ; sinon, la première disponible.
+    if (!nouvellesCategories.some((c) => c.id === categorieId)) {
+      setCategorieId(nouvellesCategories[0]?.id ?? '');
+    }
+  };
   const [libelle, setLibelle] = useState('');
   const [date, setDate] = useState(aujourdhuiISO());
 
@@ -63,7 +83,7 @@ export function SaisieRapide({ onFerme }: { onFerme: () => void }) {
           autoFocus
         />
 
-        <select className="champ" value={type} onChange={(e) => setType(e.target.value as TypeTransaction)}>
+        <select className="champ" value={type} onChange={(e) => changerType(e.target.value as TypeTransaction)}>
           <option value="depense">Dépense</option>
           <option value="revenu">Revenu</option>
           <option value="facture">Facture</option>
@@ -71,7 +91,7 @@ export function SaisieRapide({ onFerme }: { onFerme: () => void }) {
         </select>
 
         <select className="champ" value={categorieId} onChange={(e) => setCategorieId(e.target.value)}>
-          {config.categories.map((c) => (
+          {categoriesProposees.map((c) => (
             <option key={c.id} value={c.id}>{c.nom}</option>
           ))}
         </select>

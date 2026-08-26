@@ -1,0 +1,16 @@
+-- Ajoute 'revenu' à l'énumération des natures de catégorie.
+--
+-- Jusqu'ici, `app.category_nature` ne modélisait que le côté dépense du
+-- budget (fixe/variable/provision/epargne) : une transaction de crédit
+-- (salaire, CAF, remboursement reçu...) n'avait littéralement AUCUNE
+-- catégorie cohérente à proposer, la rendant impossible à classer.
+--
+-- Sans impact sur les calculs existants : `nature` n'est lu par le moteur
+-- que pour ventiler les DÉPENSES (charges fixes / provisions / enveloppes
+-- variables) — le total des revenus vient déjà de `Transaction.type =
+-- 'revenu'`, indépendamment de la catégorie. 'revenu' n'est donc jamais
+-- comparé nulle part dans ces calculs, seulement affiché.
+--
+-- `ALTER TYPE ... ADD VALUE` doit rester seul dans sa transaction (règle
+-- PostgreSQL) : rien d'autre n'est ajouté dans ce fichier.
+alter type app.category_nature add value 'revenu';

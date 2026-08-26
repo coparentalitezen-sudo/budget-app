@@ -2,7 +2,7 @@ import { obtenirSupabase } from '../lib/supabase.ts';
 import { ecrireMeta, lireMeta } from './dexie.ts';
 import { patcherCacheConfiguration } from './repository.ts';
 import type { RegleCategorisation } from '../import/regles.ts';
-import type { Categorie } from '@budget/core/src/types.ts';
+import type { Categorie, NatureCategorie } from '@budget/core/src/types.ts';
 
 /**
  * Écritures de configuration : catégories, enveloppes, activation des
@@ -33,7 +33,7 @@ async function client() {
 export async function enregistrerCategorie(categorie: {
   id?: string;
   nom: string;
-  nature: 'fixe' | 'variable' | 'provision' | 'epargne';
+  nature: NatureCategorie;
   criticite: 'essentielle' | 'semi_essentielle' | 'non_essentielle' | null;
 }): Promise<void> {
   const supabase = await client();

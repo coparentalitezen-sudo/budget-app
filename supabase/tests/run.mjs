@@ -415,6 +415,13 @@ if (fail === 0) {
     }
   });
 
+  await verifie('des catégories de revenu existent (Salaire, CAF, remboursements reçus...)', async () => {
+    const r = await db.query(
+      `select count(*)::int as n from public.categories where user_id = '${SEED_UID}' and nature = 'revenu'`,
+    );
+    if (r.rows[0].n !== 3) throw new Error(`${r.rows[0].n} catégorie(s) de revenu au lieu de 3`);
+  });
+
   await verifie('les revenus rechargés totalisent exactement 3 352,80 €', async () => {
     const r = await db.query(
       `select sum(amount_cents)::bigint as total from public.recurring_incomes where user_id = '${SEED_UID}'`,

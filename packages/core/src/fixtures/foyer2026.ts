@@ -33,6 +33,10 @@ export const CATEGORIES = {
   divers: 'cat_divers',
   // Épargne
   epargne: 'cat_epargne',
+  // Revenus (catégorisation des transactions de type crédit)
+  revenuSalaire: 'cat_revenu_salaire',
+  revenuCafAllocations: 'cat_revenu_caf',
+  revenuAutres: 'cat_revenu_autres',
 } as const;
 
 export const foyer2026: Configuration = {
@@ -70,6 +74,15 @@ export const foyer2026: Configuration = {
     { id: CATEGORIES.divers, nom: 'Divers / achats plaisir', nature: 'variable', criticite: 'non_essentielle' },
 
     { id: CATEGORIES.epargne, nom: 'Épargne', nature: 'epargne' },
+
+    // Revenus. Ne participent à AUCUN calcul (le total des revenus vient de
+    // `Transaction.type === 'revenu'`, pas de la catégorie) : uniquement là
+    // pour que les transactions de crédit (salaire, CAF, remboursements
+    // reçus...) aient une catégorie à proposer, au lieu de rester bloquées
+    // sans aucune option cohérente.
+    { id: CATEGORIES.revenuSalaire, nom: 'Salaire', nature: 'revenu' },
+    { id: CATEGORIES.revenuCafAllocations, nom: 'CAF / Allocations', nature: 'revenu' },
+    { id: CATEGORIES.revenuAutres, nom: 'Autres revenus', nature: 'revenu' },
   ],
 
   revenus: [

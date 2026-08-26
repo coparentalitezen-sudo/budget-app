@@ -47,8 +47,13 @@ export interface Transaction {
  * variable  : enveloppe pilotable au quotidien (courses, essence...)
  * provision : dotation vers le compte de provisions (charge annuelle lissée)
  * epargne   : versement vers un objectif d'épargne
+ * revenu    : classe une transaction de type crédit (salaire, CAF...) —
+ *             n'entre dans AUCUN calcul de `calculerRealise`/
+ *             `synthetiserSemaine` (le total des revenus s'obtient déjà de
+ *             `Transaction.type === 'revenu'`, indépendamment de la
+ *             catégorie) ; sert uniquement à répartir l'affichage.
  */
-export type NatureCategorie = 'fixe' | 'variable' | 'provision' | 'epargne';
+export type NatureCategorie = 'fixe' | 'variable' | 'provision' | 'epargne' | 'revenu';
 
 export interface Categorie {
   id: string;

@@ -310,9 +310,11 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
                       onBlur={() => setEditionCategorieId(null)}
                     >
                       <option value="">Non catégorisé</option>
-                      {config.categories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.nom}</option>
-                      ))}
+                      {config.categories
+                        .filter((c) => (t.type === 'revenu' ? c.nature === 'revenu' : c.nature !== 'revenu'))
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>{c.nom}</option>
+                        ))}
                     </select>
                   ) : (
                     <button

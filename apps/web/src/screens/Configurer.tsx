@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { eur } from '@budget/core/src/money.ts';
 import { periodeDe } from '@budget/core/src/periode.ts';
-import type { Categorie } from '@budget/core/src/types.ts';
+import type { Categorie, NatureCategorie } from '@budget/core/src/types.ts';
 import {
   activerRecurrent, archiverCategorie, chargerRegles, definirEnveloppe,
   enregistrerCategorie, enregistrerRegle, supprimerRegle,
@@ -72,29 +72,37 @@ export function Configurer() {
                 <strong>{c.nom}</strong>
                 <Etiquette>{c.nature}</Etiquette>
               </div>
-              <select
-                className="champ"
-                value={c.criticite ?? 'non_classee'}
-                onChange={(e) =>
-                  void executer(async () => {
-                    const valeur = e.target.value;
-                    await enregistrerCategorie({
-                      id: c.id,
-                      nom: c.nom,
-                      nature: c.nature,
-                      criticite: valeur === 'non_classee' ? null : (valeur as Categorie['criticite'])!,
-                    });
-                    return `Criticité de « ${c.nom} » enregistrée.`;
-                  })
-                }
-              >
-                {CRITICITES.map((v) => (
-                  <option key={v} value={v ?? 'non_classee'}>
-                    {v === 'non_classee' ? 'Non classée (exclue du calcul)' : v}
-                  </option>
-                ))}
-              </select>
-              {c.nature === 'variable' && (
+              {c.nature !== 'revenu' && (
+                <select
+                  className="champ"
+                  value={c.criticite ?? 'non_classee'}
+                  onChange={(e) =>
+                    void executer(async () => {
+                      const valeur = e.target.value;
+                      await enregistrerCategorie({
+                        id: c.id,
+                        nom: c.nom,
+                        nature: c.nature,
+                        criticite: valeur === 'non_classee' ? null : (valeur as Categorie['criticite'])!,
+                      });
+                      return `Criticité de « ${c.nom} » enregistrée.`;
+                    })
+                  }
+                >
+                  {CRITICITES.map((v) => (
+                    <option key={v} value={v ?? 'non_classee'}>
+                      {v === 'non_classee' ? 'Non classée (exclue du calcul)' : v}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {c.nature === 'revenu' && (
+                <p className="note">
+                  Catégorie de revenu : pas de criticité, elle ne fait pas partie
+                  des dépenses du fonds d’urgence.
+                </p>
+              )}
+              {(c.nature === 'variable' || c.nature === 'revenu') && (
                 <button
                   className="bouton"
                   onClick={() =>
@@ -306,28 +314,40 @@ function NouvelleCategorie({
 }: {
   onEnregistrer: (c: {
     nom: string;
-    nature: 'fixe' | 'variable' | 'provision' | 'epargne';
+    nature: NatureCategorie;
     // `undefined` (non classée dans le moteur) est ramené à `null` ici :
     // en base, une criticité absente est un NULL explicite.
     criticite: 'essentielle' | 'semi_essentielle' | 'non_essentielle' | null;
   }) => void;
 }) {
   const [nom, setNom] = useState('');
+  // Seules ces deux natures sont créables depuis l'écran : fixe/provision/
+  // epargne restent structurelles (issues de la fixture/du seed), mais
+  // dépense variable et revenu sont les deux familles libres au quotidien —
+  // sans « revenu », une transaction de crédit (salaire, CAF...) n'avait
+  // aucune catégorie cohérente à proposer.
+  const [nature, setNature] = useState<'variable' | 'revenu'>('variable');
   return (
     <Carte titre="Nouvelle catégorie">
       <input className="champ" placeholder="Nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+      <select className="champ" value={nature} onChange={(e) => setNature(e.target.value as 'variable' | 'revenu')}>
+        <option value="variable">Dépense</option>
+        <option value="revenu">Revenu</option>
+      </select>
       <button
         className="bouton bouton-principal"
         disabled={nom.trim() === ''}
         onClick={() => {
-          onEnregistrer({ nom: nom.trim(), nature: 'variable', criticite: null });
+          onEnregistrer({ nom: nom.trim(), nature, criticite: null });
           setNom('');
         }}
       >
-        Créer (variable, non classée)
+        Créer ({nature === 'revenu' ? 'revenu' : 'dépense variable, non classée'})
       </button>
       <p className="note">
-        Créée non classée : à vous de définir sa criticité, elle ne sera pas devinée.
+        {nature === 'revenu'
+          ? 'Catégorie de revenu, proposée pour les transactions créditées (salaire, CAF, remboursements reçus…).'
+          : 'Créée non classée : à vous de définir sa criticité, elle ne sera pas devinée.'}
       </p>
     </Carte>
   );

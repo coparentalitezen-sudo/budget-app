@@ -50,6 +50,9 @@ insert into public.categories (id, user_id, name, nature, criticality) values ('
 insert into public.categories (id, user_id, name, nature, criticality) values ('e7d8f79b-0226-4e5f-859d-e9ff6640b78a', :uid, 'Vêtements', 'variable', 'semi_essentielle') on conflict (id) do update set criticality = excluded.criticality;
 insert into public.categories (id, user_id, name, nature, criticality) values ('e7391cf9-2831-4cf0-873c-0f6a3460b5ab', :uid, 'Divers / achats plaisir', 'variable', 'non_essentielle') on conflict (id) do update set criticality = excluded.criticality;
 insert into public.categories (id, user_id, name, nature, criticality) values ('0aede16a-5c11-456f-807e-66ff3e1620c9', :uid, 'Épargne', 'epargne', null) on conflict (id) do update set criticality = excluded.criticality;
+insert into public.categories (id, user_id, name, nature, criticality) values ('e84fd8d9-b53b-45d7-8eec-9d8afab8b8ef', :uid, 'Salaire', 'revenu', null) on conflict (id) do update set criticality = excluded.criticality;
+insert into public.categories (id, user_id, name, nature, criticality) values ('2cc14da4-090d-425c-852f-35cea3ac8643', :uid, 'CAF / Allocations', 'revenu', null) on conflict (id) do update set criticality = excluded.criticality;
+insert into public.categories (id, user_id, name, nature, criticality) values ('a1c33eaa-30b2-4917-86b4-d2759aace549', :uid, 'Autres revenus', 'revenu', null) on conflict (id) do update set criticality = excluded.criticality;
 
 -- Revenus récurrents (jours de versement inconnus = NULL)
 insert into public.recurring_incomes (id, user_id, name, amount_cents, day_of_month) values ('f51aa9fa-8542-4705-8deb-7a5d6a3adf4f', :uid, 'Salaire', 271900, null) on conflict (id) do update set amount_cents = excluded.amount_cents;

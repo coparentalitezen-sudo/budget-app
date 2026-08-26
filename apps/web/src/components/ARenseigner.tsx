@@ -24,6 +24,13 @@ export function OperationARenseigner({
   onTraitee: () => void;
 }) {
   const libelle = transaction.commercant ?? transaction.description ?? '';
+  // Un crédit (salaire, CAF, remboursement reçu…) ne propose que les
+  // catégories de revenu, un débit que les catégories de dépense — sans ce
+  // tri, une transaction créditée n'avait souvent AUCUNE catégorie
+  // cohérente à choisir (aucune catégorie de revenu n'existait avant).
+  const categoriesProposees = categories.filter((c) =>
+    transaction.type === 'revenu' ? c.nature === 'revenu' : c.nature !== 'revenu',
+  );
   const [categorieId, setCategorieId] = useState('');
   // Coché par défaut : classer une opération doit enrichir la base de règles
   // pour que ce commerçant ne redevienne pas « à renseigner » le mois
@@ -105,7 +112,7 @@ export function OperationARenseigner({
         onChange={(e) => setCategorieId(e.target.value)}
       >
         <option value="">Choisir une catégorie…</option>
-        {categories.map((c) => (
+        {categoriesProposees.map((c) => (
           <option key={c.id} value={c.id}>{c.nom}</option>
         ))}
       </select>
