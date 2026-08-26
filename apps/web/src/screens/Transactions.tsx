@@ -117,6 +117,36 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
     }
   };
 
+  /**
+   * Valide une opération déjà catégorisée (par une règle, ou modifiée à la
+   * main) mais jamais confirmée. Distinct de « À renseigner », qui ne
+   * concerne QUE les opérations sans catégorie : une opération classée
+   * automatiquement par une règle reste « en attente » indéfiniment tant
+   * que personne ne la confirme — une règle propose, elle ne valide jamais
+   * à la place de l'utilisateur.
+   */
+  const [validationEnCours, setValidationEnCours] = useState<string | null>(null);
+  const valider = async (t: Transaction) => {
+    setValidationEnCours(t.id);
+    try {
+      await enregistrerTransaction({ ...t, statut: 'validated' });
+    } finally {
+      setValidationEnCours(null);
+    }
+  };
+
+  const [validationLotEnCours, setValidationLotEnCours] = useState(false);
+  const validerLot = async (transactionsCiblees: Transaction[]) => {
+    const enAttente = transactionsCiblees.filter((t) => t.statut === 'pending');
+    if (enAttente.length === 0) return;
+    setValidationLotEnCours(true);
+    try {
+      for (const t of enAttente) await enregistrerTransaction({ ...t, statut: 'validated' });
+    } finally {
+      setValidationLotEnCours(false);
+    }
+  };
+
   // Les doublons sont SIGNALÉS, jamais masqués ni supprimés.
   const empreintesMultiples = useMemo(() => {
     const compte = new Map<string, number>();
@@ -287,6 +317,18 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
         {filtrees.filter((t) => t.statut === 'pending').length} en attente
       </p>
 
+      {filtrees.filter((t) => t.statut === 'pending').length > 0 && (
+        <button
+          className="bouton"
+          disabled={validationLotEnCours}
+          onClick={() => void validerLot(filtrees)}
+        >
+          {validationLotEnCours
+            ? 'Validation…'
+            : `Valider les ${filtrees.filter((t) => t.statut === 'pending').length} opération(s) en attente affichées`}
+        </button>
+      )}
+
       {filtrees.length > 0 && (
         <button
           className="bouton"
@@ -359,6 +401,15 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
                     </Etiquette>
                   </button>
                   {suspect && <Etiquette ton="doublon">Doublon possible</Etiquette>}
+                  {t.statut === 'pending' && (
+                    <button
+                      className="lien"
+                      disabled={validationEnCours === t.id}
+                      onClick={() => void valider(t)}
+                    >
+                      {validationEnCours === t.id ? 'Validation…' : 'Valider'}
+                    </button>
+                  )}
                   <button
                     className="lien lien-detail"
                     disabled={suppressionEnCours === t.id}
