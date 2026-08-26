@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/dexie.ts';
 import {
@@ -36,7 +36,23 @@ export function useConfiguration(): { config: Configuration; source: 'cache' | '
   // écrans qui l'affichent, sans attendre un remontage complet de
   // l'application — c'était le cas avant (config restait figée tant que
   // l'écran ne se démontait pas).
-  const config = useLiveQuery(() => configurationLocale(), [], null) ?? configurationParDefaut;
+  const configBrute = useLiveQuery(() => configurationLocale(), [], null) ?? configurationParDefaut;
+
+  // Point UNIQUE de tri : tous les écrans lisent leurs catégories via ce
+  // hook (aucun n'appelle `configurationLocale`/`chargerConfiguration`
+  // directement), donc les trier ici suffit à garantir l'ordre alphabétique
+  // PARTOUT — y compris juste après la création d'une nouvelle catégorie,
+  // qui arriverait sinon en dernière position (ordre d'insertion en base,
+  // sans aucune signification pour l'utilisateur).
+  const config = useMemo<Configuration>(
+    () => ({
+      ...configBrute,
+      categories: [...configBrute.categories].sort((a, b) =>
+        a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }),
+      ),
+    }),
+    [configBrute],
+  );
 
   return { config, source };
 }
