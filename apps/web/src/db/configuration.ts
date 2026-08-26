@@ -2,7 +2,7 @@ import { obtenirSupabase } from '../lib/supabase.ts';
 import { ecrireMeta, lireMeta } from './dexie.ts';
 import { patcherCacheConfiguration } from './repository.ts';
 import type { RegleCategorisation } from '../import/regles.ts';
-import type { Categorie, NatureCategorie } from '@budget/core/src/types.ts';
+import type { Categorie, ChargeRecurrente, LigneBudget, NatureCategorie, RevenuRecurrent } from '@budget/core/src/types.ts';
 
 /**
  * Écritures de configuration : catégories, enveloppes, activation des
@@ -150,6 +150,18 @@ export async function definirEnveloppe(
     { onConflict: 'period_id,category_id' },
   );
   if (error) throw new Error(error.message);
+
+  // Le cache ne porte que la période COURANTE (celle chargée au dernier
+  // `chargerConfiguration`) : la corriger ici suffit, `periodesCiblees`
+  // (mois suivants) n'a rien à y refléter tant qu'on n'y est pas encore.
+  const ligne: LigneBudget = { categorieId, montantPrevu: montantCents };
+  await patcherCacheConfiguration((c) => ({
+    ...c,
+    budgetVariable: c.budgetVariable.some((l) => l.categorieId === categorieId)
+      ? c.budgetVariable.map((l) => (l.categorieId === categorieId ? ligne : l))
+      : [...c.budgetVariable, ligne],
+  }));
+
   return ids.length;
 }
 
@@ -175,12 +187,27 @@ export async function supprimerEnveloppe(
     .eq('category_id', categorieId)
     .in('period_id', ids);
   if (error) throw new Error(error.message);
+
+  await patcherCacheConfiguration((c) => ({
+    ...c,
+    budgetVariable: c.budgetVariable.filter((l) => l.categorieId !== categorieId),
+  }));
+
   return ids.length;
 }
 
 /* ------------------------------------------------------------------ */
 /* Revenus et charges récurrentes                                      */
 /* ------------------------------------------------------------------ */
+
+/** Le cache local ne porte que les éléments ACTIFS (comme `chargerConfiguration`, filtré côté requête). */
+function retirerDuCache(table: 'recurring_incomes' | 'recurring_expenses', id: string) {
+  return patcherCacheConfiguration((c) =>
+    table === 'recurring_incomes'
+      ? { ...c, revenus: c.revenus.filter((r) => r.id !== id) }
+      : { ...c, charges: c.charges.filter((ch) => ch.id !== id) },
+  );
+}
 
 export async function activerRecurrent(
   table: 'recurring_incomes' | 'recurring_expenses',
@@ -190,6 +217,11 @@ export async function activerRecurrent(
   const supabase = await client();
   const { error } = await supabase.from(table).update({ is_active: actif }).eq('id', id);
   if (error) throw new Error(error.message);
+
+  // Désactiver retire l'élément du cache (comme du prochain chargement
+  // distant, filtré sur `is_active`) ; réactiver n'a pas d'UI pour l'instant
+  // (rien à ajouter au cache sans re-questionner le serveur).
+  if (!actif) await retirerDuCache(table, id);
 }
 
 export async function enregistrerRevenuRecurrent(revenu: {
@@ -203,9 +235,10 @@ export async function enregistrerRevenuRecurrent(revenu: {
   const userId = session.session?.user.id;
   if (!userId) throw new Error('Session absente.');
 
+  const id = revenu.id ?? crypto.randomUUID();
   const { error } = await supabase.from('recurring_incomes').upsert(
     {
-      id: revenu.id ?? crypto.randomUUID(),
+      id,
       user_id: userId,
       name: revenu.nom,
       amount_cents: revenu.montant,
@@ -214,6 +247,16 @@ export async function enregistrerRevenuRecurrent(revenu: {
     { onConflict: 'id' },
   );
   if (error) throw new Error(error.message);
+
+  // Sans ce correctif, le revenu modifié (ex. jour de versement renseigné)
+  // ne serait à jour qu'après un rechargement complet de l'application.
+  const nouveau: RevenuRecurrent = { id, nom: revenu.nom, montant: revenu.montant, jour: revenu.jour };
+  await patcherCacheConfiguration((c) => ({
+    ...c,
+    revenus: c.revenus.some((r) => r.id === id)
+      ? c.revenus.map((r) => (r.id === id ? nouveau : r))
+      : [...c.revenus, nouveau],
+  }));
 }
 
 export async function enregistrerChargeRecurrente(charge: {
@@ -228,9 +271,10 @@ export async function enregistrerChargeRecurrente(charge: {
   const userId = session.session?.user.id;
   if (!userId) throw new Error('Session absente.');
 
+  const id = charge.id ?? crypto.randomUUID();
   const { error } = await supabase.from('recurring_expenses').upsert(
     {
-      id: charge.id ?? crypto.randomUUID(),
+      id,
       user_id: userId,
       name: charge.nom,
       amount_cents: charge.montant,
@@ -240,6 +284,16 @@ export async function enregistrerChargeRecurrente(charge: {
     { onConflict: 'id' },
   );
   if (error) throw new Error(error.message);
+
+  const nouvelle: ChargeRecurrente = {
+    id, nom: charge.nom, montant: charge.montant, jour: charge.jour, categorieId: charge.categorieId,
+  };
+  await patcherCacheConfiguration((c) => ({
+    ...c,
+    charges: c.charges.some((ch) => ch.id === id)
+      ? c.charges.map((ch) => (ch.id === id ? nouvelle : ch))
+      : [...c.charges, nouvelle],
+  }));
 }
 
 /**
@@ -257,6 +311,7 @@ export async function supprimerRecurrent(
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw new Error(error.message);
+  await retirerDuCache(table, id);
 }
 
 /* ------------------------------------------------------------------ */
