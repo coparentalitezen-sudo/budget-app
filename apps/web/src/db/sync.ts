@@ -173,11 +173,25 @@ export async function synchroniser(): Promise<ResultatSync> {
   // serveur. Une synchronisation COMPLÈTE (jamais incrémentale), une seule
   // fois par champ concerné, répare le cache local avant qu'il ne puisse
   // écraser quoi que ce soit — les suivantes redeviennent incrémentales.
+  //
+  // `reparationSuppressionsSync` corrige un bug distinct, plus grave : la
+  // requête excluait `deleted_at is not null` avant même de partir, donc
+  // AUCUNE synchronisation, passée ou future, ne pouvait jamais apprendre
+  // qu'une transaction avait été supprimée ailleurs (autre appareil, ou
+  // directement en base) — elle restait affichée indéfiniment en local,
+  // `derniereSync` avançant quand même à chaque passage (la suppression
+  // n'était donc jamais rattrapée par un futur pull incrémental non plus).
+  // Une synchronisation COMPLÈTE, sans le filtre `deleted_at`, une seule
+  // fois, rattrape toutes les suppressions manquées jusqu'ici.
   const reparationStatutFaite = await lireMeta<boolean>('reparationStatutSync', false);
   const reparationPointageFaite = await lireMeta<boolean>('reparationPointageSync', false);
-  const reparationsFaites = reparationStatutFaite && reparationPointageFaite;
+  const reparationSuppressionsFaite = await lireMeta<boolean>('reparationSuppressionsSync', false);
+  const reparationsFaites = reparationStatutFaite && reparationPointageFaite && reparationSuppressionsFaite;
   const depuis = reparationsFaites ? await lireMeta<string | null>('derniereSync', null) : null;
-  let requete = supabase.from('transactions').select('*').is('deleted_at', null);
+  // Plus jamais de filtre sur `deleted_at` : une ligne supprimée doit être
+  // reçue elle aussi, pour être supprimée localement ci-dessous — sinon la
+  // suppression ne se propage jamais vers un autre appareil.
+  let requete = supabase.from('transactions').select('*');
   if (depuis) requete = requete.gt('updated_at', depuis);
 
   const { data, error } = await requete;
@@ -192,17 +206,23 @@ export async function synchroniser(): Promise<ResultatSync> {
   }
 
   const lignes = (data ?? []) as Record<string, unknown>[];
-  if (lignes.length > 0) {
-    await db.transactions.bulkPut(lignes.map(versTransaction));
+  const actives = lignes.filter((l) => l.deleted_at === null);
+  const supprimees = lignes.filter((l) => l.deleted_at !== null);
+  if (actives.length > 0) {
+    await db.transactions.bulkPut(actives.map(versTransaction));
+  }
+  if (supprimees.length > 0) {
+    await db.transactions.bulkDelete(supprimees.map((l) => l.id as string));
   }
   await ecrireMeta('derniereSync', new Date().toISOString());
   if (!reparationStatutFaite) await ecrireMeta('reparationStatutSync', true);
   if (!reparationPointageFaite) await ecrireMeta('reparationPointageSync', true);
+  if (!reparationSuppressionsFaite) await ecrireMeta('reparationSuppressionsSync', true);
 
   return {
     etat: 'ok',
     envoyees,
-    recues: lignes.length,
+    recues: actives.length,
     enAttente: await db.outbox.count(),
   };
 }
