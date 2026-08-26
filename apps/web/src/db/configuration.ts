@@ -93,9 +93,42 @@ export async function archiverCategorie(id: string): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 /**
+ * Résout les périodes ciblées par une modification d'enveloppe : la période
+ * donnée seule, ou elle et toutes celles qui suivent. Partagé entre
+ * `definirEnveloppe` et `supprimerEnveloppe` — les deux doivent cibler
+ * exactement le même ensemble de mois.
+ */
+async function periodesCiblees(
+  periode: string,
+  moisSuivantsInclus: boolean,
+): Promise<{ userId: string; ids: string[] }> {
+  const supabase = await client();
+  const { data: session } = await supabase.auth.getSession();
+  const userId = session.session?.user.id;
+  if (!userId) throw new Error('Session absente.');
+
+  const [annee, mois] = periode.split('-').map(Number);
+
+  const { data: periodes, error } = await supabase
+    .from('budget_periods')
+    .select('id, year, month')
+    .eq('user_id', userId);
+  if (error) throw new Error(error.message);
+
+  const cibles = (periodes ?? []).filter((p) => {
+    const apres = p.year > annee || (p.year === annee && p.month >= mois);
+    return moisSuivantsInclus ? apres : p.year === annee && p.month === mois;
+  });
+
+  return { userId, ids: cibles.map((p) => p.id) };
+}
+
+/**
  * Met à jour l'enveloppe d'une catégorie pour une période, et pour toutes
  * les périodes suivantes si demandé — c'est presque toujours l'intention
- * réelle quand on ajuste un budget récurrent.
+ * réelle quand on ajuste un budget récurrent. Sert aussi bien à créer une
+ * NOUVELLE enveloppe (aucune ligne n'existe encore pour cette catégorie)
+ * qu'à en modifier une existante : `upsert` couvre les deux.
  */
 export async function definirEnveloppe(
   periode: string,
@@ -104,36 +137,45 @@ export async function definirEnveloppe(
   moisSuivantsInclus: boolean,
 ): Promise<number> {
   const supabase = await client();
-  const { data: session } = await supabase.auth.getSession();
-  const userId = session.session?.user.id;
-  if (!userId) throw new Error('Session absente.');
-
-  const [annee, mois] = periode.split('-').map(Number);
-
-  const { data: periodes, error: erreurPeriodes } = await supabase
-    .from('budget_periods')
-    .select('id, year, month')
-    .eq('user_id', userId);
-  if (erreurPeriodes) throw new Error(erreurPeriodes.message);
-
-  const cibles = (periodes ?? []).filter((p) => {
-    const apres = p.year > annee || (p.year === annee && p.month >= mois);
-    return moisSuivantsInclus ? apres : p.year === annee && p.month === mois;
-  });
-
-  if (cibles.length === 0) return 0;
+  const { userId, ids } = await periodesCiblees(periode, moisSuivantsInclus);
+  if (ids.length === 0) return 0;
 
   const { error } = await supabase.from('budgets').upsert(
-    cibles.map((p) => ({
+    ids.map((periodId) => ({
       user_id: userId,
-      period_id: p.id,
+      period_id: periodId,
       category_id: categorieId,
       planned_cents: montantCents,
     })),
     { onConflict: 'period_id,category_id' },
   );
   if (error) throw new Error(error.message);
-  return cibles.length;
+  return ids.length;
+}
+
+/**
+ * Retire l'enveloppe d'une catégorie — la catégorie elle-même n'est pas
+ * touchée, seule sa ligne de budget disparaît (le mois en cours, et les
+ * suivants si demandé). Contrairement aux transactions, une ligne de
+ * budget n'a pas de valeur historique propre : c'est un montant PRÉVU, pas
+ * un fait passé — la suppression est donc physique, pas logique.
+ */
+export async function supprimerEnveloppe(
+  periode: string,
+  categorieId: string,
+  moisSuivantsInclus: boolean,
+): Promise<number> {
+  const supabase = await client();
+  const { ids } = await periodesCiblees(periode, moisSuivantsInclus);
+  if (ids.length === 0) return 0;
+
+  const { error } = await supabase
+    .from('budgets')
+    .delete()
+    .eq('category_id', categorieId)
+    .in('period_id', ids);
+  if (error) throw new Error(error.message);
+  return ids.length;
 }
 
 /* ------------------------------------------------------------------ */
@@ -147,6 +189,73 @@ export async function activerRecurrent(
 ): Promise<void> {
   const supabase = await client();
   const { error } = await supabase.from(table).update({ is_active: actif }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function enregistrerRevenuRecurrent(revenu: {
+  id?: string;
+  nom: string;
+  montant: number;
+  jour: number | null;
+}): Promise<void> {
+  const supabase = await client();
+  const { data: session } = await supabase.auth.getSession();
+  const userId = session.session?.user.id;
+  if (!userId) throw new Error('Session absente.');
+
+  const { error } = await supabase.from('recurring_incomes').upsert(
+    {
+      id: revenu.id ?? crypto.randomUUID(),
+      user_id: userId,
+      name: revenu.nom,
+      amount_cents: revenu.montant,
+      day_of_month: revenu.jour,
+    },
+    { onConflict: 'id' },
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function enregistrerChargeRecurrente(charge: {
+  id?: string;
+  nom: string;
+  montant: number;
+  jour: number | null;
+  categorieId: string;
+}): Promise<void> {
+  const supabase = await client();
+  const { data: session } = await supabase.auth.getSession();
+  const userId = session.session?.user.id;
+  if (!userId) throw new Error('Session absente.');
+
+  const { error } = await supabase.from('recurring_expenses').upsert(
+    {
+      id: charge.id ?? crypto.randomUUID(),
+      user_id: userId,
+      name: charge.nom,
+      amount_cents: charge.montant,
+      day_of_month: charge.jour,
+      category_id: charge.categorieId,
+    },
+    { onConflict: 'id' },
+  );
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Suppression LOGIQUE : un revenu ou une charge récurrente supprimé reste
+ * dans l'historique (utile pour comprendre un mois passé), contrairement à
+ * « Désactiver » qui reste réversible et visible dans l'écran.
+ */
+export async function supprimerRecurrent(
+  table: 'recurring_incomes' | 'recurring_expenses',
+  id: string,
+): Promise<void> {
+  const supabase = await client();
+  const { error } = await supabase
+    .from(table)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id);
   if (error) throw new Error(error.message);
 }
 

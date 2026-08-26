@@ -4,7 +4,8 @@ import { periodeDe } from '@budget/core/src/periode.ts';
 import type { Categorie, NatureCategorie } from '@budget/core/src/types.ts';
 import {
   activerRecurrent, archiverCategorie, chargerRegles, definirEnveloppe,
-  enregistrerCategorie, enregistrerRegle, supprimerRegle,
+  enregistrerCategorie, enregistrerChargeRecurrente, enregistrerRegle,
+  enregistrerRevenuRecurrent, supprimerEnveloppe, supprimerRecurrent, supprimerRegle,
 } from '../db/configuration.ts';
 import type { RegleCategorisation, TypeCorrespondance } from '../import/regles.ts';
 import { Carte, Etiquette, Vide } from '../components/ui.tsx';
@@ -143,8 +144,25 @@ export function Configurer() {
                   return `${nomCategorie(l.categorieId)} : ${montant(v)} sur ${n} période(s).`;
                 })
               }
+              onSupprimer={(suivants) =>
+                executer(async () => {
+                  const n = await supprimerEnveloppe(periode, l.categorieId, suivants);
+                  return `Enveloppe « ${nomCategorie(l.categorieId)} » retirée de ${n} période(s).`;
+                })
+              }
             />
           ))}
+          <NouvelleEnveloppe
+            categoriesDisponibles={config.categories.filter(
+              (c) => c.nature === 'variable' && !config.budgetVariable.some((l) => l.categorieId === c.id),
+            )}
+            onEnregistrer={(categorieId, v, suivants) =>
+              executer(async () => {
+                const n = await definirEnveloppe(periode, categorieId, v, suivants);
+                return `${nomCategorie(categorieId)} : ${montant(v)} sur ${n} période(s).`;
+              })
+            }
+          />
         </>
       )}
 
@@ -152,8 +170,9 @@ export function Configurer() {
         <>
           <Carte titre="Revenus récurrents">
             <p className="note">
-              Désactiver un élément le retire des calculs du mois en cours. Rien n’est
-              supprimé : l’historique reste intact.
+              Désactiver un élément le retire des calculs du mois en cours sans rien
+              supprimer. Supprimer est définitif : ne l’utilisez que pour une erreur de
+              saisie, pas pour un revenu qui s’arrête.
             </p>
             {config.revenus.map((r) => (
               <Bascule
@@ -166,9 +185,23 @@ export function Configurer() {
                     return `${r.nom} désactivé.`;
                   })
                 }
+                onSupprimer={() =>
+                  executer(async () => {
+                    await supprimerRecurrent('recurring_incomes', r.id);
+                    return `${r.nom} supprimé.`;
+                  })
+                }
               />
             ))}
           </Carte>
+          <NouveauRevenu
+            onEnregistrer={(r) =>
+              executer(async () => {
+                await enregistrerRevenuRecurrent(r);
+                return `Revenu « ${r.nom} » créé.`;
+              })
+            }
+          />
 
           <Carte titre="Charges récurrentes">
             {config.charges.map((c) => (
@@ -182,9 +215,24 @@ export function Configurer() {
                     return `${c.nom} désactivée.`;
                   })
                 }
+                onSupprimer={() =>
+                  executer(async () => {
+                    await supprimerRecurrent('recurring_expenses', c.id);
+                    return `${c.nom} supprimée.`;
+                  })
+                }
               />
             ))}
           </Carte>
+          <NouvelleCharge
+            categories={config.categories.filter((c) => c.nature !== 'revenu')}
+            onEnregistrer={(c) =>
+              executer(async () => {
+                await enregistrerChargeRecurrente(c);
+                return `Charge « ${c.nom} » créée.`;
+              })
+            }
+          />
         </>
       )}
 
@@ -253,11 +301,12 @@ export function Configurer() {
 }
 
 function Enveloppe({
-  nom, valeur, onValider,
+  nom, valeur, onValider, onSupprimer,
 }: {
   nom: string;
   valeur: number;
   onValider: (v: number, suivants: boolean) => Promise<void>;
+  onSupprimer: (suivants: boolean) => Promise<void>;
 }) {
   const [texte, setTexte] = useState(String(valeur / 100));
   const [suivants, setSuivants] = useState(true);
@@ -278,34 +327,212 @@ function Enveloppe({
         <input type="checkbox" checked={suivants} onChange={(e) => setSuivants(e.target.checked)} />{' '}
         Appliquer aussi aux mois suivants
       </label>
+      <div className="bascule">
+        <button
+          className="bouton bouton-principal"
+          onClick={() => {
+            const v = Number(texte.replace(',', '.'));
+            if (Number.isFinite(v) && v >= 0) void onValider(eur(v), suivants);
+          }}
+        >
+          Enregistrer
+        </button>
+        <button
+          className="bouton"
+          onClick={() => {
+            if (window.confirm(`Retirer l’enveloppe « ${nom} » ?`)) void onSupprimer(suivants);
+          }}
+        >
+          Supprimer
+        </button>
+      </div>
+    </Carte>
+  );
+}
+
+function NouvelleEnveloppe({
+  categoriesDisponibles, onEnregistrer,
+}: {
+  categoriesDisponibles: Categorie[];
+  onEnregistrer: (categorieId: string, v: number, suivants: boolean) => Promise<void>;
+}) {
+  const [categorieId, setCategorieId] = useState('');
+  const [texte, setTexte] = useState('');
+  const [suivants, setSuivants] = useState(true);
+
+  if (categoriesDisponibles.length === 0) return null;
+
+  return (
+    <Carte titre="Nouvelle enveloppe">
+      <select
+        className="champ"
+        value={categorieId}
+        onChange={(e) => setCategorieId(e.target.value)}
+      >
+        <option value="">Choisir une catégorie…</option>
+        {categoriesDisponibles.map((c) => (
+          <option key={c.id} value={c.id}>{c.nom}</option>
+        ))}
+      </select>
+      <input
+        className="champ"
+        type="text"
+        inputMode="decimal"
+        placeholder="Montant mensuel"
+        value={texte}
+        onChange={(e) => setTexte(e.target.value)}
+      />
+      <label className="puce">
+        <input type="checkbox" checked={suivants} onChange={(e) => setSuivants(e.target.checked)} />{' '}
+        Appliquer aussi aux mois suivants
+      </label>
       <button
-        className="bouton"
+        className="bouton bouton-principal"
+        disabled={categorieId === ''}
         onClick={() => {
           const v = Number(texte.replace(',', '.'));
-          if (Number.isFinite(v) && v >= 0) void onValider(eur(v), suivants);
+          if (categorieId !== '' && Number.isFinite(v) && v >= 0) {
+            void onEnregistrer(categorieId, eur(v), suivants);
+            setCategorieId('');
+            setTexte('');
+          }
         }}
       >
-        Enregistrer
+        Ajouter
       </button>
     </Carte>
   );
 }
 
 function Bascule({
-  libelle, detail, onDesactiver,
+  libelle, detail, onDesactiver, onSupprimer,
 }: {
   libelle: string;
   detail: string;
   onDesactiver: () => Promise<void>;
+  onSupprimer: () => Promise<void>;
 }) {
   return (
     <div className="scenario">
       <div className="scenario-tete">
         <span>{libelle}</span>
-        <button className="lien" onClick={() => void onDesactiver()}>Désactiver</button>
+        <span>
+          <button className="lien" onClick={() => void onDesactiver()}>Désactiver</button>{' '}
+          <button
+            className="lien lien-detail"
+            onClick={() => {
+              if (window.confirm(`Supprimer « ${libelle} » ? Cette action est définitive.`)) {
+                void onSupprimer();
+              }
+            }}
+          >
+            Supprimer
+          </button>
+        </span>
       </div>
       <p className="alerte-detail">{detail}</p>
     </div>
+  );
+}
+
+function NouveauRevenu({
+  onEnregistrer,
+}: {
+  onEnregistrer: (r: { nom: string; montant: number; jour: number | null }) => Promise<void>;
+}) {
+  const [nom, setNom] = useState('');
+  const [texte, setTexte] = useState('');
+  const [jourTexte, setJourTexte] = useState('');
+
+  const valider = () => {
+    const v = Number(texte.replace(',', '.'));
+    if (nom.trim() === '' || !Number.isFinite(v) || v <= 0) return;
+    const jour = jourTexte.trim() === '' ? null : Number(jourTexte);
+    void onEnregistrer({ nom: nom.trim(), montant: eur(v), jour });
+    setNom(''); setTexte(''); setJourTexte('');
+  };
+
+  return (
+    <Carte titre="Nouveau revenu récurrent">
+      <input className="champ" placeholder="Nom (ex. Salaire)" value={nom} onChange={(e) => setNom(e.target.value)} />
+      <input
+        className="champ"
+        type="text"
+        inputMode="decimal"
+        placeholder="Montant mensuel"
+        value={texte}
+        onChange={(e) => setTexte(e.target.value)}
+      />
+      <input
+        className="champ"
+        type="text"
+        inputMode="numeric"
+        placeholder="Jour de versement (facultatif, 1-31)"
+        value={jourTexte}
+        onChange={(e) => setJourTexte(e.target.value)}
+      />
+      <button className="bouton bouton-principal" disabled={nom.trim() === ''} onClick={valider}>
+        Ajouter
+      </button>
+      <p className="note">
+        Jour laissé vide = non confirmé : le revenu est alors exclu des
+        encaissements à venir plutôt que deviné.
+      </p>
+    </Carte>
+  );
+}
+
+function NouvelleCharge({
+  categories, onEnregistrer,
+}: {
+  categories: Categorie[];
+  onEnregistrer: (c: { nom: string; montant: number; jour: number | null; categorieId: string }) => Promise<void>;
+}) {
+  const [nom, setNom] = useState('');
+  const [texte, setTexte] = useState('');
+  const [jourTexte, setJourTexte] = useState('');
+  const [categorieId, setCategorieId] = useState(categories[0]?.id ?? '');
+
+  const valider = () => {
+    const v = Number(texte.replace(',', '.'));
+    if (nom.trim() === '' || categorieId === '' || !Number.isFinite(v) || v <= 0) return;
+    const jour = jourTexte.trim() === '' ? null : Number(jourTexte);
+    void onEnregistrer({ nom: nom.trim(), montant: eur(v), jour, categorieId });
+    setNom(''); setTexte(''); setJourTexte('');
+  };
+
+  return (
+    <Carte titre="Nouvelle charge récurrente">
+      <input className="champ" placeholder="Nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+      <select className="champ" value={categorieId} onChange={(e) => setCategorieId(e.target.value)}>
+        {categories.map((c) => (
+          <option key={c.id} value={c.id}>{c.nom}</option>
+        ))}
+      </select>
+      <input
+        className="champ"
+        type="text"
+        inputMode="decimal"
+        placeholder="Montant mensuel"
+        value={texte}
+        onChange={(e) => setTexte(e.target.value)}
+      />
+      <input
+        className="champ"
+        type="text"
+        inputMode="numeric"
+        placeholder="Jour de prélèvement (facultatif, 1-31)"
+        value={jourTexte}
+        onChange={(e) => setJourTexte(e.target.value)}
+      />
+      <button className="bouton bouton-principal" disabled={nom.trim() === '' || categorieId === ''} onClick={valider}>
+        Ajouter
+      </button>
+      <p className="note">
+        Jour laissé vide = non confirmé : la charge est alors comptée comme
+        restant à décaisser plutôt que devinée.
+      </p>
+    </Carte>
   );
 }
 
