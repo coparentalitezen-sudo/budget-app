@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { eur } from '@budget/core/src/money.ts';
 import { periodeDe } from '@budget/core/src/periode.ts';
-import type { Categorie, NatureCategorie } from '@budget/core/src/types.ts';
+import type { Categorie, ChargeRecurrente, NatureCategorie, RevenuRecurrent } from '@budget/core/src/types.ts';
 import {
   activerRecurrent, archiverCategorie, chargerRegles, definirEnveloppe,
   enregistrerCategorie, enregistrerChargeRecurrente, enregistrerRegle,
@@ -175,10 +175,15 @@ export function Configurer() {
               saisie, pas pour un revenu qui s’arrête.
             </p>
             {config.revenus.map((r) => (
-              <Bascule
+              <RevenuLigne
                 key={r.id}
-                libelle={`${r.nom} — ${montant(r.montant)}`}
-                detail={r.jour === null ? 'Jour de versement inconnu' : `Le ${r.jour}`}
+                revenu={r}
+                onEnregistrer={(v) =>
+                  executer(async () => {
+                    await enregistrerRevenuRecurrent(v);
+                    return `${v.nom} enregistré.`;
+                  })
+                }
                 onDesactiver={() =>
                   executer(async () => {
                     await activerRecurrent('recurring_incomes', r.id, false);
@@ -205,10 +210,17 @@ export function Configurer() {
 
           <Carte titre="Charges récurrentes">
             {config.charges.map((c) => (
-              <Bascule
+              <ChargeLigne
                 key={c.id}
-                libelle={`${c.nom} — ${montant(c.montant)}`}
-                detail={c.fin ? `Dernière échéance ${c.fin}` : c.jour === null ? 'Jour inconnu' : `Le ${c.jour}`}
+                charge={c}
+                categories={config.categories.filter((cat) => cat.nature !== 'revenu')}
+                nomCategorie={nomCategorie}
+                onEnregistrer={(v) =>
+                  executer(async () => {
+                    await enregistrerChargeRecurrente(v);
+                    return `${v.nom} enregistrée.`;
+                  })
+                }
                 onDesactiver={() =>
                   executer(async () => {
                     await activerRecurrent('recurring_expenses', c.id, false);
@@ -404,11 +416,13 @@ function NouvelleEnveloppe({
   );
 }
 
-function Bascule({
-  libelle, detail, onDesactiver, onSupprimer,
+/** Ligne d'en-tête commune : libellé + actions Modifier / Désactiver / Supprimer. */
+function LigneRecurrenteEntete({
+  libelle, detail, onModifier, onDesactiver, onSupprimer,
 }: {
   libelle: string;
   detail: string;
+  onModifier: () => void;
   onDesactiver: () => Promise<void>;
   onSupprimer: () => Promise<void>;
 }) {
@@ -417,6 +431,7 @@ function Bascule({
       <div className="scenario-tete">
         <span>{libelle}</span>
         <span>
+          <button className="lien" onClick={onModifier}>Modifier</button>{' '}
           <button className="lien" onClick={() => void onDesactiver()}>Désactiver</button>{' '}
           <button
             className="lien lien-detail"
@@ -432,6 +447,152 @@ function Bascule({
       </div>
       <p className="alerte-detail">{detail}</p>
     </div>
+  );
+}
+
+function RevenuLigne({
+  revenu, onEnregistrer, onDesactiver, onSupprimer,
+}: {
+  revenu: RevenuRecurrent;
+  onEnregistrer: (r: { id: string; nom: string; montant: number; jour: number | null }) => void;
+  onDesactiver: () => Promise<void>;
+  onSupprimer: () => Promise<void>;
+}) {
+  const [edition, setEdition] = useState(false);
+  const [nom, setNom] = useState(revenu.nom);
+  const [texte, setTexte] = useState(String(revenu.montant / 100));
+  const [jourTexte, setJourTexte] = useState(revenu.jour === null ? '' : String(revenu.jour));
+
+  if (!edition) {
+    return (
+      <LigneRecurrenteEntete
+        libelle={`${revenu.nom} — ${montant(revenu.montant)}`}
+        detail={revenu.jour === null ? 'Jour de versement inconnu' : `Le ${revenu.jour}`}
+        onModifier={() => setEdition(true)}
+        onDesactiver={onDesactiver}
+        onSupprimer={onSupprimer}
+      />
+    );
+  }
+
+  return (
+    <Carte titre="Modifier le revenu">
+      <input className="champ" placeholder="Nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+      <input
+        className="champ"
+        type="text"
+        inputMode="decimal"
+        placeholder="Montant mensuel"
+        value={texte}
+        onChange={(e) => setTexte(e.target.value)}
+      />
+      <input
+        className="champ"
+        type="text"
+        inputMode="numeric"
+        placeholder="Jour de versement (facultatif, 1-31)"
+        value={jourTexte}
+        onChange={(e) => setJourTexte(e.target.value)}
+      />
+      <div className="bascule">
+        <button
+          className="bouton bouton-principal"
+          onClick={() => {
+            const v = Number(texte.replace(',', '.'));
+            if (nom.trim() === '' || !Number.isFinite(v) || v <= 0) return;
+            onEnregistrer({
+              id: revenu.id,
+              nom: nom.trim(),
+              montant: eur(v),
+              jour: jourTexte.trim() === '' ? null : Number(jourTexte),
+            });
+            setEdition(false);
+          }}
+        >
+          Enregistrer
+        </button>
+        <button className="bouton" onClick={() => setEdition(false)}>Annuler</button>
+      </div>
+    </Carte>
+  );
+}
+
+function ChargeLigne({
+  charge, categories, nomCategorie, onEnregistrer, onDesactiver, onSupprimer,
+}: {
+  charge: ChargeRecurrente;
+  categories: Categorie[];
+  nomCategorie: (id: string) => string;
+  onEnregistrer: (c: { id: string; nom: string; montant: number; jour: number | null; categorieId: string }) => void;
+  onDesactiver: () => Promise<void>;
+  onSupprimer: () => Promise<void>;
+}) {
+  const [edition, setEdition] = useState(false);
+  const [nom, setNom] = useState(charge.nom);
+  const [texte, setTexte] = useState(String(charge.montant / 100));
+  const [jourTexte, setJourTexte] = useState(charge.jour === null ? '' : String(charge.jour));
+  const [categorieId, setCategorieId] = useState(charge.categorieId);
+
+  if (!edition) {
+    return (
+      <LigneRecurrenteEntete
+        libelle={`${charge.nom} — ${montant(charge.montant)}`}
+        detail={
+          `${nomCategorie(charge.categorieId)} · ` +
+          (charge.fin ? `Dernière échéance ${charge.fin}` : charge.jour === null ? 'Jour inconnu' : `Le ${charge.jour}`)
+        }
+        onModifier={() => setEdition(true)}
+        onDesactiver={onDesactiver}
+        onSupprimer={onSupprimer}
+      />
+    );
+  }
+
+  return (
+    <Carte titre="Modifier la charge">
+      <input className="champ" placeholder="Nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+      <select className="champ" value={categorieId} onChange={(e) => setCategorieId(e.target.value)}>
+        {categories.map((c) => (
+          <option key={c.id} value={c.id}>{c.nom}</option>
+        ))}
+      </select>
+      <input
+        className="champ"
+        type="text"
+        inputMode="decimal"
+        placeholder="Montant mensuel"
+        value={texte}
+        onChange={(e) => setTexte(e.target.value)}
+      />
+      <input
+        className="champ"
+        type="text"
+        inputMode="numeric"
+        placeholder="Jour de prélèvement (facultatif, 1-31)"
+        value={jourTexte}
+        onChange={(e) => setJourTexte(e.target.value)}
+      />
+      <div className="bascule">
+        <button
+          className="bouton bouton-principal"
+          onClick={() => {
+            const v = Number(texte.replace(',', '.'));
+            if (nom.trim() === '' || categorieId === '' || !Number.isFinite(v) || v <= 0) return;
+            onEnregistrer({
+              id: charge.id,
+              nom: nom.trim(),
+              montant: eur(v),
+              jour: jourTexte.trim() === '' ? null : Number(jourTexte),
+              categorieId,
+            });
+            setEdition(false);
+          }}
+        >
+          Enregistrer
+        </button>
+        <button className="bouton" onClick={() => setEdition(false)}>Annuler</button>
+      </div>
+    </Carte>
   );
 }
 
