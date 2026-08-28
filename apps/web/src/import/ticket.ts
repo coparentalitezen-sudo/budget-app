@@ -21,16 +21,31 @@ export interface TicketLu {
   date: DateISO | null;
 }
 
-// Le moyen de paiement n'apparaît qu'UNE fois sur un ticket, toujours pour
-// le montant réellement réglé — priorité sur les lignes « Total », dont un
-// ticket avec remises successives (ex. « 2e article à -50 % ») en imprime
-// PLUSIEURS, une après chaque remise appliquée.
+// Trois niveaux de fiabilité décroissante, essayés dans l'ordre — dès
+// qu'un niveau trouve quelque chose, les suivants ne sont jamais consultés.
+//
+// 1. Le moyen de paiement, montant sur la même ligne : n'apparaît qu'UNE
+//    fois, toujours pour ce qui a été réellement réglé.
+// 2. Un intitulé de total SANS AMBIGUÏTÉ POSSIBLE : ne désigne jamais
+//    autre chose que le montant final.
+// 3. Le mot « TOTAL » seul, plus risqué — un ticket imprime parfois
+//    PLUSIEURS lignes « Total » (une par remise appliquée), ou l'utilise
+//    comme intitulé de ligne dans un tableau récapitulatif de TVA. Cette
+//    ambiguïté est la cause exacte d'un montant faux constaté sur un vrai
+//    ticket Action (tableau TVA imprimant une ligne « TOTAL » distincte du
+//    vrai total, juste en dessous).
+//
+// Volontairement PAS de « MONTANT » seul, dans aucun niveau : un ticket
+// imprime presque toujours un « Montant H.T. » (hors taxes, jamais ce qui
+// a été payé) à proximité immédiate du vrai total — un mot-clé aussi
+// générique le confondrait avec certitude.
 const MOTS_CLES_PAIEMENT = [
   'CARTE BANCAIRE', 'CARTE BLEUE', 'ESPECES', 'ESPÈCES', 'CHEQUE', 'CHÈQUE',
 ];
-const MOTS_CLES_TOTAL = [
-  'NET A PAYER', 'NET À PAYER', 'A PAYER', 'À PAYER', 'TOTAL TTC', 'TOTAL', 'MONTANT',
+const MOTS_CLES_TOTAL_EXPLICITE = [
+  'NET A PAYER', 'NET À PAYER', 'A PAYER', 'À PAYER', 'TOTAL TTC', 'MONTANT TTC',
 ];
+const MOTS_CLES_TOTAL_GENERIQUE = ['TOTAL'];
 
 // Exige un séparateur décimal (`,` ou `.`) : un code-barres, un numéro de
 // carte de fidélité ou un numéro de téléphone n'en porte jamais, un prix
@@ -83,15 +98,14 @@ export async function lireTicket(moteur: MoteurOcr, image: Blob): Promise<Ticket
     .map((l) => l.trim())
     .filter((l) => l !== '');
 
-  // 1. Le moyen de paiement, s'il est lisible : LE montant réellement réglé.
-  // 2. À défaut, la DERNIÈRE ligne « Total »/« Net à payer » — jamais la
-  //    première, pour ne pas confondre un total intermédiaire (avant une
-  //    remise) avec le total final.
-  // 3. En dernier repli, le DERNIER montant imprimé sur le ticket — pas le
-  //    plus gros : une suite de totaux décroissants (remises successives)
-  //    rend le total final souvent PLUS PETIT que ceux qui le précèdent.
+  // Voir le commentaire sur les mots-clés : chaque niveau n'est consulté
+  // que si le précédent n'a RIEN trouvé — jamais mélangés entre eux, pour
+  // qu'un intitulé générique et ambigu (niveau 3) ne puisse jamais
+  // l'emporter sur un intitulé explicite (niveau 2) simplement parce qu'il
+  // apparaît plus bas sur le ticket.
   let montant = dernierMontantParMotCle(lignes, MOTS_CLES_PAIEMENT);
-  if (montant === null) montant = dernierMontantParMotCle(lignes, MOTS_CLES_TOTAL);
+  if (montant === null) montant = dernierMontantParMotCle(lignes, MOTS_CLES_TOTAL_EXPLICITE);
+  if (montant === null) montant = dernierMontantParMotCle(lignes, MOTS_CLES_TOTAL_GENERIQUE);
   if (montant === null) {
     const tous = lignes.flatMap(montantsDeLaLigne);
     if (tous.length > 0) montant = tous[tous.length - 1];

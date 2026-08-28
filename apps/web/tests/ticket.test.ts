@@ -71,6 +71,30 @@ describe('lireTicket', () => {
     assert.equal(r.montant, eur(163.90));
   });
 
+  test('« TOTAL TTC » explicite l’emporte sur un tableau de TVA qui répète « TOTAL » plus bas', async () => {
+    // Cas réel (Action) : après le total, un tableau récapitulatif de TVA
+    // imprime SA PROPRE ligne « TOTAL » (intitulé de colonne, pas le
+    // montant payé) suivie de trois nombres. Sans hiérarchie de mots-clés,
+    // cette ligne, plus bas dans le texte, écrasait le bon montant.
+    const texte = [
+      'tontarelli poubelle       3,99',
+      'pink stuff détachant 1kg  4,45',
+      'TOTAL TTC                20,88',
+      'MODE DE PAIEMENT',
+      'Carte',
+      'DETAILS TVA   TVA   Excl.   Incl.',
+      'TOTAL         3,48  17,40   20,88',
+    ].join('\n');
+    const r = await lireTicket(moteur(texte), new Blob());
+    assert.equal(r.montant, eur(20.88));
+  });
+
+  test('« Montant H.T. » (hors taxes) n’est jamais pris pour le total payé, même sans ligne de paiement', async () => {
+    const texte = ['Total          100,00', 'Montant H.T.    83,33', 'Taux TVA 20%    16,67'].join('\n');
+    const r = await lireTicket(moteur(texte), new Blob());
+    assert.equal(r.montant, eur(100.00));
+  });
+
   test('un code-barres ou un numéro sans virgule n’est jamais pris pour un montant', async () => {
     const texte = ['8033628324910', 'TEL 0123456789', 'TOTAL', '9,99'].join('\n');
     const r = await lireTicket(moteur(texte), new Blob());
