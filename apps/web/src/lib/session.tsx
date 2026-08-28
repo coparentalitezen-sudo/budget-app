@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { obtenirSupabase, supabaseConfigure } from './supabase.ts';
+import { app } from '../config/app.config.ts';
 
 /**
  * Session.
@@ -141,7 +142,7 @@ export function Connexion() {
   return (
     <div className="ecran">
       <div className="carte">
-        <h2>Budget</h2>
+        <h2>{app.identite.nom}</h2>
         <p className="note">
           Vous pouvez utiliser l’application <strong>sans compte</strong>. Vos données
           restent alors sur cet appareil. Le compte ne sert qu’à synchroniser entre

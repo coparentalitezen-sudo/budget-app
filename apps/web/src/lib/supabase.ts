@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { env } from '../config/env.ts';
 
 /**
  * Client Supabase, chargé PARESSEUSEMENT.
@@ -13,8 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * ne doit JAMAIS apparaître côté client — toute variable préfixée `VITE_`
  * est intégrée au bundle et publiquement lisible.
  */
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const { supabaseUrl: url, supabaseAnonKey: anonKey } = env;
 
 export const supabaseConfigure = Boolean(url && anonKey);
 

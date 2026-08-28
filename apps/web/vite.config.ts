@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { app } from './src/config/app.config.ts';
 
 /**
  * Identifiant de build, affiché dans l'app pour vérifier qu'un déploiement a
@@ -38,22 +39,22 @@ export default defineConfig({
       // qui suffit peu pour une PWA installée sur iPhone — iOS ne relance
       // pas ce contrôle aussi fiablement qu'un onglet de navigateur classique.
       injectRegister: false,
-      includeAssets: ['icon-192.png', 'icon-512.png'],
+      includeAssets: [app.pwa.icones.icon192, app.pwa.icones.icon512],
       manifest: {
-        name: 'Budget',
-        short_name: 'Budget',
-        description: 'Gestion budgétaire personnelle',
-        lang: 'fr-FR',
-        start_url: '/',
-        display: 'standalone',
-        background_color: '#0f1115',
-        theme_color: '#0f1115',
+        name: app.identite.nom,
+        short_name: app.identite.nomCourt,
+        description: app.identite.description,
+        lang: app.identite.langue,
+        start_url: app.pwa.startUrl,
+        display: app.pwa.affichage,
+        background_color: app.marque.themeColor,
+        theme_color: app.marque.themeColor,
         icons: [
-          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: app.pwa.icones.icon192, sizes: '192x192', type: 'image/png' },
+          { src: app.pwa.icones.icon512, sizes: '512x512', type: 'image/png' },
           // Variante `maskable` distincte : le système peut rogner jusqu'à
           // 20 % de chaque côté, d'où une marge intérieure plus large.
-          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: app.pwa.icones.maskable512, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

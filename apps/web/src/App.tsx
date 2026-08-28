@@ -15,21 +15,15 @@ import { installerSyncAutomatique, synchroniser } from './db/sync.ts';
 import { useOutboxCount } from './state/useDonnees.ts';
 import { Connexion, FournisseurSession, useSession } from './lib/session.tsx';
 import { supabaseConfigure } from './lib/supabase.ts';
+import { app, type CleOnglet } from './config/app.config.ts';
 
-type Onglet =
-  | 'accueil' | 'transactions' | 'budget' | 'epargne'
-  | 'credits' | 'provisions' | 'import' | 'rapprochement' | 'configurer' | 'parametres' | 'plus';
+type Onglet = CleOnglet;
 
-/** Sections regroupées sous « Plus », pour que la navigation reste à 5 entrées. */
-const SOUS_PLUS: Onglet[] = ['credits', 'provisions', 'import', 'rapprochement', 'configurer', 'parametres'];
-
-const ONGLETS: { cle: Onglet; libelle: string; icone: string }[] = [
-  { cle: 'accueil', libelle: 'Accueil', icone: '🏠' },
-  { cle: 'transactions', libelle: 'Opérations', icone: '📋' },
-  { cle: 'budget', libelle: 'Budget', icone: '📊' },
-  { cle: 'epargne', libelle: 'Épargne', icone: '🐷' },
-  { cle: 'plus', libelle: 'Plus', icone: '⋯' },
-];
+const ONGLETS = app.navigation.principale;
+// Élargi explicitement : `app` étant `as const`, `sousPlus` s'infère comme un
+// tuple de littéraux étroit, incompatible avec `.includes(onglet)` où
+// `onglet` porte le type complet `Onglet`.
+const SOUS_PLUS: readonly CleOnglet[] = app.navigation.sousPlus;
 
 export default function App() {
   return (
@@ -77,7 +71,7 @@ function Application() {
   if (connexionRequise) {
     return (
       <div className="app">
-        <header className="entete"><h1>Budget</h1></header>
+        <header className="entete"><h1>{app.identite.nom}</h1></header>
         <main className="contenu"><Connexion /></main>
       </div>
     );
@@ -86,7 +80,7 @@ function Application() {
   return (
     <div className="app">
       <header className="entete">
-        <h1>Budget</h1>
+        <h1>{app.identite.nom}</h1>
         <span className="version-tag" title={`Construit le ${new Date(__BUILD_TIME__).toLocaleString('fr-FR')}`}>
           {__APP_VERSION__}
         </span>

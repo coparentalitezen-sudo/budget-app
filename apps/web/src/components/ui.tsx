@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { INCONNU } from '../lib/format.ts';
+import { app } from '../config/app.config.ts';
 
 export function Carte({
   titre,
@@ -82,9 +83,9 @@ export function Vide({ message }: { message: string }) {
 }
 
 /** Couleurs d'accent partagées entre les cartes KPI, badges et jauges. */
-export const COULEUR_REVENUS = '#4ade80';
-export const COULEUR_DEPENSES = '#38bdf8';
-export const COULEUR_EPARGNE = '#a78bfa';
+export const COULEUR_REVENUS = app.marque.couleurs.accent;
+export const COULEUR_DEPENSES = app.marque.couleurs.bleu;
+export const COULEUR_EPARGNE = app.marque.couleurs.violet;
 
 /** Pastille ronde colorée portant une icône (emoji) — purement décoratif. */
 export function IconeBadge({ emoji, couleur }: { emoji: string; couleur: string }) {
