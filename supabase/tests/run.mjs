@@ -486,6 +486,69 @@ if (fail === 0) {
     if (autresUsers.rows[0].n !== 1) throw new Error('FUITE : delete_my_account() a touché un autre utilisateur');
   });
 
+  console.log('\n=== Justificatifs ===');
+
+  const TX_RECU_ID = '55555555-0000-0000-0000-000000000001';
+
+  await verifie('un justificatif peut être créé et relu par son propriétaire', async () => {
+    await db.exec('begin;');
+    await sousIdentite(
+      UID,
+      `insert into public.transactions (id, user_id, account_id, occurred_on, amount_cents, type)
+         values ('${TX_RECU_ID}', '${UID}', '22222222-0000-0000-0000-000000000001', '2026-08-01', 1000, 'depense')`,
+    );
+    await sousIdentite(
+      UID,
+      `insert into public.receipts (user_id, transaction_id, storage_path)
+         values ('${UID}', '${TX_RECU_ID}', '${UID}/${TX_RECU_ID}.jpg')`,
+    );
+    const r = await sousIdentite(
+      UID,
+      `select count(*)::int as n from public.receipts where transaction_id = '${TX_RECU_ID}'`,
+    );
+    await db.exec('rollback;');
+    if (r.rows[0].n !== 1) throw new Error('le justificatif inséré n’est pas relu');
+  });
+
+  await verifie('un justificatif d’un autre utilisateur reste invisible', async () => {
+    await db.exec('begin;');
+    await db.exec(
+      `insert into public.transactions (id, user_id, account_id, occurred_on, amount_cents, type)
+         values ('${TX_RECU_ID}', '${UID}', '22222222-0000-0000-0000-000000000001', '2026-08-01', 1000, 'depense');
+       insert into public.receipts (user_id, transaction_id, storage_path)
+         values ('${UID}', '${TX_RECU_ID}', '${UID}/${TX_RECU_ID}.jpg')`,
+    );
+    const r = await sousIdentite(
+      AUTRE,
+      `select count(*)::int as n from public.receipts where transaction_id = '${TX_RECU_ID}'`,
+    );
+    await db.exec('rollback;');
+    if (r.rows[0].n !== 0) throw new Error('FUITE : justificatif d’un autre utilisateur visible');
+  });
+
+  await verifie('un seul justificatif par transaction (contrainte unique)', async () => {
+    await db.exec('begin;');
+    await db.exec(
+      `insert into public.transactions (id, user_id, account_id, occurred_on, amount_cents, type)
+         values ('${TX_RECU_ID}', '${UID}', '22222222-0000-0000-0000-000000000001', '2026-08-01', 1000, 'depense')`,
+    );
+    await sousIdentite(
+      UID,
+      `insert into public.receipts (user_id, transaction_id, storage_path) values ('${UID}', '${TX_RECU_ID}', 'a.jpg')`,
+    );
+    let rejete = false;
+    try {
+      await sousIdentite(
+        UID,
+        `insert into public.receipts (user_id, transaction_id, storage_path) values ('${UID}', '${TX_RECU_ID}', 'b.jpg')`,
+      );
+    } catch {
+      rejete = true;
+    }
+    await db.exec('rollback;');
+    if (!rejete) throw new Error('un second justificatif sur la même transaction aurait dû être rejeté');
+  });
+
   console.log('\n=== Seed généré depuis la fixture du moteur ===');
 
   const SEED_UID = '77777777-7777-7777-7777-777777777777';
@@ -642,13 +705,13 @@ if (fail === 0) {
   });
 
   console.log('\n=== Couverture des tables attendues ===');
-  await verifie('les 20 tables prévues existent', async () => {
+  await verifie('les 21 tables prévues existent', async () => {
     const attendues = [
       'users', 'accounts', 'transactions', 'categories', 'budget_periods', 'budgets',
       'savings_goals', 'savings_transactions', 'loans', 'recurring_expenses',
       'annual_provisions', 'one_off_liabilities', 'bank_connections', 'bank_sync_logs',
       'import_jobs', 'categorization_rules', 'recurring_incomes',
-      'workspaces', 'workspace_members', 'consent_logs',
+      'workspaces', 'workspace_members', 'consent_logs', 'receipts',
     ];
     const r = await db.query(`
       select table_name from information_schema.tables

@@ -15,6 +15,9 @@ const ENTREES: EntreePlus[] = [
   { cle: 'rapprochement', libelle: 'Rapprochement', description: 'Vérifier le solde face au relevé', emoji: '🧮' },
   { cle: 'configurer', libelle: 'Configuration', description: 'Revenus, charges, enveloppes', emoji: '⚙️' },
   { cle: 'parametres', libelle: 'Réglages', description: 'Synchronisation, comptes, session', emoji: '🔧' },
+  ...(features.justificatifs
+    ? [{ cle: 'justificatifs', libelle: 'Justificatifs', description: 'Tickets photographiés, en attente ou comptabilisés', emoji: '🧾' }]
+    : []),
   ...(features.rgpd
     ? [{ cle: 'confidentialite', libelle: 'Confidentialité', description: 'CGU, mentions légales, vos droits', emoji: '📜' }]
     : []),

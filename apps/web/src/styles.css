@@ -181,6 +181,24 @@ body {
 .transaction-case { margin-top: 4px; flex-shrink: 0; }
 .transaction-corps { flex: 1; min-width: 0; }
 
+.justificatif-ligne {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 0; border-bottom: 1px solid var(--bordure);
+  background: none; border-left: none; border-right: none; border-top: none;
+  text-align: left; color: var(--texte);
+}
+.justificatif-ligne:last-child { border-bottom: none; }
+.justificatif-vignette {
+  width: 48px; height: 48px; border-radius: 8px; overflow: hidden; flex-shrink: 0;
+  background: var(--surface-haute); display: flex; align-items: center; justify-content: center;
+}
+.justificatif-vignette img { width: 100%; height: 100%; object-fit: cover; }
+.justificatif-vignette-attente { color: var(--texte-doux); font-size: 12px; }
+.justificatif-corps { flex: 1; min-width: 0; }
+.justificatif-tete { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 15px; }
+.justificatif-meta { display: block; font-size: 12px; color: var(--texte-doux); margin-top: 3px; }
+.justificatif-plein { width: 100%; max-height: 75vh; object-fit: contain; border-radius: var(--rayon); }
+
 .categorie-tete, .categorie-pied {
   display: flex; justify-content: space-between; font-size: 14px; gap: 12px;
 }
@@ -277,6 +295,12 @@ body {
 }
 .feuille-tete { display: flex; justify-content: space-between; align-items: center; }
 .feuille-tete h2 { font-size: 17px; margin: 0; }
+
+.photo-apercu { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.photo-apercu img {
+  max-width: 100%; max-height: 220px; border-radius: var(--rayon);
+  border: 1px solid var(--bordure); object-fit: contain;
+}
 
 .navigation {
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;

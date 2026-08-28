@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { eur } from '@budget/core/src/money.ts';
 import type { Transaction, TypeTransaction } from '@budget/core/src/types.ts';
-import { enregistrerTransaction } from '../db/dexie.ts';
+import { enregistrerJustificatif, enregistrerTransaction } from '../db/dexie.ts';
+import { redimensionnerEtCompresser } from '../lib/image.ts';
 import { aujourdhuiISO } from '../lib/format.ts';
 import { useConfiguration } from '../state/useDonnees.ts';
 
@@ -38,6 +39,29 @@ export function SaisieRapide({ onFerme }: { onFerme: () => void }) {
   };
   const [libelle, setLibelle] = useState('');
   const [date, setDate] = useState(aujourdhuiISO());
+  // Facultative : prendre un ticket en photo est un raccourci, jamais une
+  // étape obligatoire — la validation ne porte que sur montant + catégorie.
+  const [photo, setPhoto] = useState<Blob | null>(null);
+  const [photoEnCours, setPhotoEnCours] = useState(false);
+  const [apercu, setApercu] = useState<string | null>(null);
+
+  // L'URL d'objet doit être révoquée dès qu'elle n'est plus affichée, sous
+  // peine de fuite mémoire — le navigateur ne le fait jamais tout seul.
+  useEffect(() => {
+    if (!photo) { setApercu(null); return; }
+    const url = URL.createObjectURL(photo);
+    setApercu(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photo]);
+
+  const capturerPhoto = async (fichier: File) => {
+    setPhotoEnCours(true);
+    try {
+      setPhoto(await redimensionnerEtCompresser(fichier));
+    } finally {
+      setPhotoEnCours(false);
+    }
+  };
 
   const valeur = Number(montantTexte.replace(',', '.'));
   const valide = Number.isFinite(valeur) && valeur > 0 && categorieId !== '';
@@ -67,6 +91,7 @@ export function SaisieRapide({ onFerme }: { onFerme: () => void }) {
       pointage: 'unpointed',
     };
     await enregistrerTransaction(transaction);
+    if (photo) await enregistrerJustificatif(transaction.id, photo, 'image/jpeg');
     onFerme();
   };
 
@@ -77,6 +102,28 @@ export function SaisieRapide({ onFerme }: { onFerme: () => void }) {
           <h2>Nouvelle transaction</h2>
           <button className="lien" onClick={onFerme}>Annuler</button>
         </header>
+
+        {apercu ? (
+          <div className="photo-apercu">
+            <img src={apercu} alt="Ticket photographié" />
+            <button className="lien" onClick={() => setPhoto(null)}>Retirer la photo</button>
+          </div>
+        ) : (
+          <label className="bouton" style={{ display: 'block', textAlign: 'center' }}>
+            {photoEnCours ? 'Traitement…' : '📷 Photographier le ticket'}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              disabled={photoEnCours}
+              onChange={(e) => {
+                const fichier = e.target.files?.[0];
+                if (fichier) void capturerPhoto(fichier);
+              }}
+            />
+          </label>
+        )}
 
         <input
           className="champ champ-montant"

@@ -11,10 +11,12 @@ import { Rapprochement } from './screens/Rapprochement.tsx';
 import { Configurer } from './screens/Configurer.tsx';
 import { Plus } from './screens/Plus.tsx';
 import { Confidentialite } from './screens/Confidentialite.tsx';
+import { Justificatifs } from './screens/Justificatifs.tsx';
 import { features } from './config/features.config.ts';
 import { BandeauMiseAJour } from './components/BandeauMiseAJour.tsx';
 import { SaisieRapide } from './components/SaisieRapide.tsx';
 import { installerSyncAutomatique, synchroniser } from './db/sync.ts';
+import { receptionnerJustificatifs, televerserJustificatifs } from './db/syncJustificatifs.ts';
 import { genererOperationsRecurrentesEnAttente } from './db/repository.ts';
 import { useOutboxCount } from './state/useDonnees.ts';
 import { Connexion, FournisseurSession, useSession } from './lib/session.tsx';
@@ -51,12 +53,17 @@ function Application() {
 
   useEffect(() => {
     const majEtat = () => setEnLigne(navigator.onLine);
+    const declencherJustificatifs = () => {
+      void receptionnerJustificatifs().then(() => televerserJustificatifs());
+    };
     window.addEventListener('online', majEtat);
     window.addEventListener('offline', majEtat);
+    window.addEventListener('online', declencherJustificatifs);
     const detacher = installerSyncAutomatique(() => {});
     return () => {
       window.removeEventListener('online', majEtat);
       window.removeEventListener('offline', majEtat);
+      window.removeEventListener('online', declencherJustificatifs);
       detacher();
     };
   }, []);
@@ -68,6 +75,15 @@ function Application() {
   // manuel sur « Synchroniser maintenant » ou à une vraie coupure réseau.
   useEffect(() => {
     if (userId) void synchroniser();
+  }, [userId]);
+
+  // Justificatifs : file d'envoi/réception séparée de `synchroniser()` (voir
+  // `syncJustificatifs.ts`) — un envoi de photo qui échoue ne doit jamais
+  // bloquer la synchro des transactions, ni l'inverse.
+  useEffect(() => {
+    if (userId) {
+      void receptionnerJustificatifs().then(() => televerserJustificatifs());
+    }
   }, [userId]);
 
   // Matérialise les récurrentes échues (voir `genererOperationsRecurrentesEnAttente`) :
@@ -127,6 +143,7 @@ function Application() {
         {onglet === 'rapprochement' && <Rapprochement />}
         {onglet === 'configurer' && <Configurer />}
         {onglet === 'parametres' && <Parametres />}
+        {onglet === 'justificatifs' && features.justificatifs && <Justificatifs />}
         {onglet === 'confidentialite' && features.rgpd && <Confidentialite />}
         {onglet === 'plus' && <Plus onOuvrir={(cle) => setOnglet(cle as Onglet)} />}
       </main>

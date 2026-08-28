@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db/dexie.ts';
+import { db, type JustificatifLocal } from '../db/dexie.ts';
 import {
   chargerConfiguration,
   configurationLocale,
   configurationParDefaut,
 } from '../db/repository.ts';
 import { periodeDe } from '@budget/core/src/periode.ts';
+import { statutJustificatif, type StatutJustificatif } from '@budget/core/src/justificatifs.ts';
 import type { Configuration, Transaction } from '@budget/core/src/types.ts';
 
 /**
@@ -63,4 +64,23 @@ export function useTransactions(): Transaction[] {
 
 export function useOutboxCount(): number {
   return useLiveQuery(() => db.outbox.count(), [], 0) ?? 0;
+}
+
+export interface LigneJustificatif {
+  justificatif: JustificatifLocal;
+  transaction: Transaction | undefined;
+  statut: StatutJustificatif;
+}
+
+/** Un justificatif par transaction (v1) — voir `packages/core/src/justificatifs.ts`. */
+export function useJustificatifs(): LigneJustificatif[] {
+  const recus = useLiveQuery(() => db.receipts.toArray(), [], []) ?? [];
+  const transactions = useTransactions();
+
+  return recus
+    .map((justificatif) => {
+      const transaction = transactions.find((t) => t.id === justificatif.transactionId);
+      return { justificatif, transaction, statut: statutJustificatif(transaction) };
+    })
+    .sort((a, b) => (a.justificatif.creeLe < b.justificatif.creeLe ? 1 : -1));
 }

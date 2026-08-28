@@ -17,7 +17,7 @@
 export type CleOnglet =
   | 'accueil' | 'transactions' | 'budget' | 'epargne'
   | 'credits' | 'provisions' | 'import' | 'rapprochement' | 'configurer' | 'parametres'
-  | 'confidentialite' | 'plus';
+  | 'confidentialite' | 'justificatifs' | 'plus';
 
 export interface EntreeNavigation {
   cle: CleOnglet;
@@ -66,7 +66,8 @@ export const app = {
       { cle: 'plus', libelle: 'Plus', icone: '⋯' },
     ] satisfies EntreeNavigation[],
     sousPlus: [
-      'credits', 'provisions', 'import', 'rapprochement', 'configurer', 'parametres', 'confidentialite',
+      'credits', 'provisions', 'import', 'rapprochement', 'configurer', 'parametres',
+      'justificatifs', 'confidentialite',
     ] satisfies CleOnglet[],
   },
 

@@ -16,4 +16,6 @@ export const features = {
    * encore : ce drapeau reste à `false` jusqu'à la Phase 2.
    */
   workspacePartage: false,
+  /** Photo de ticket à la saisie + écran « Justificatifs » (voir `screens/Justificatifs.tsx`). */
+  justificatifs: true,
 } as const;
