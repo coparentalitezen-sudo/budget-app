@@ -120,6 +120,12 @@ body {
 .ligne-libelle { color: var(--texte-doux); font-size: 14px; }
 .ligne-valeur { font-variant-numeric: tabular-nums; font-size: 15px; text-align: right; }
 
+.ligne-case {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 0; font-size: 13px; color: var(--texte-doux); cursor: pointer;
+}
+.ligne-case input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; }
+
 .ton-positif { color: var(--accent); }
 .ton-negatif { color: var(--critique); }
 

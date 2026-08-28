@@ -9,6 +9,8 @@ import { eur } from '@budget/core/src/money.ts';
 import { aujourdhuiISO } from '../lib/format.ts';
 import { synchroniser, type ResultatSync } from '../db/sync.ts';
 import { supabaseConfigure } from '../lib/supabase.ts';
+import { exporterMesDonnees, supprimerMonCompte } from '../lib/conformite.ts';
+import { features } from '../config/features.config.ts';
 
 export function Parametres() {
   const { config } = useConfiguration();
@@ -18,6 +20,46 @@ export function Parametres() {
 
   const inconnues = inventaireInconnues(config);
   const { email: courriel, deconnecter, modeLocal } = useSession();
+
+  const [exportEnCours, setExportEnCours] = useState(false);
+  const [erreurExport, setErreurExport] = useState<string | null>(null);
+  const [motSuppression, setMotSuppression] = useState('');
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
+  const [erreurSuppression, setErreurSuppression] = useState<string | null>(null);
+
+  const exporter = async () => {
+    setExportEnCours(true);
+    setErreurExport(null);
+    try {
+      const { contenu } = await exporterMesDonnees();
+      const blob = new Blob([JSON.stringify(contenu, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const lien = document.createElement('a');
+      lien.href = url;
+      lien.download = `mes-donnees-${aujourdhuiISO()}.json`;
+      lien.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setErreurExport(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportEnCours(false);
+    }
+  };
+
+  // Confirmation par la saisie d'un mot, pas une simple case à cocher :
+  // l'action est irréversible.
+  const supprimerCompte = async () => {
+    if (motSuppression.trim().toUpperCase() !== 'SUPPRIMER') return;
+    setSuppressionEnCours(true);
+    setErreurSuppression(null);
+    try {
+      await supprimerMonCompte();
+      await deconnecter();
+    } catch (e) {
+      setErreurSuppression(e instanceof Error ? e.message : String(e));
+      setSuppressionEnCours(false);
+    }
+  };
 
   const lancerSync = async () => {
     setEnCours(true);
@@ -124,6 +166,41 @@ export function Parametres() {
           <button className="bouton" onClick={() => void deconnecter()}>Se déconnecter</button>
         )}
       </Carte>
+
+      {features.rgpd && courriel && (
+        <Carte titre="Mes données">
+          <p className="note">
+            Export complet (RGPD art. 15 et 20) : lu avec votre propre session,
+            jamais un accès élevé — vous ne recevez que ce que vous voyez déjà dans
+            l’application.
+          </p>
+          <button className="bouton" onClick={() => void exporter()} disabled={exportEnCours}>
+            {exportEnCours ? 'Export…' : 'Exporter mes données (JSON)'}
+          </button>
+          {erreurExport && <p className="note note-attention">{erreurExport}</p>}
+
+          <p className="note" style={{ marginTop: 16 }}>
+            Suppression du compte (RGPD art. 17) : définitive, supprime toutes vos
+            données (comptes, opérations, catégories, budgets). Tapez{' '}
+            <strong>SUPPRIMER</strong> pour confirmer.
+          </p>
+          <input
+            className="champ"
+            type="text"
+            placeholder="SUPPRIMER"
+            value={motSuppression}
+            onChange={(e) => setMotSuppression(e.target.value)}
+          />
+          <button
+            className="bouton"
+            disabled={motSuppression.trim().toUpperCase() !== 'SUPPRIMER' || suppressionEnCours}
+            onClick={() => void supprimerCompte()}
+          >
+            {suppressionEnCours ? 'Suppression…' : 'Supprimer définitivement mon compte'}
+          </button>
+          {erreurSuppression && <p className="note note-attention">{erreurSuppression}</p>}
+        </Carte>
+      )}
 
       <Carte titre="À propos">
         <Ligne libelle="Version" valeur={__APP_VERSION__} />

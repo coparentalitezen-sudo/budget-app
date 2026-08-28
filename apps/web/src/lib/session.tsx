@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { obtenirSupabase, supabaseConfigure } from './supabase.ts';
 import { app } from '../config/app.config.ts';
+import { features } from '../config/features.config.ts';
+import { identiteEditeur } from './legal.ts';
+import { journaliserConsentement } from './conformite.ts';
 
 /**
  * Session.
@@ -126,10 +129,14 @@ export function Connexion() {
   const { connecter, creerCompte, activerModeLocal } = useSession();
   const [adresse, setAdresse] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
+  const [accepteCGU, setAccepteCGU] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [occupe, setOccupe] = useState(false);
 
   const valide = adresse.includes('@') && motDePasse.length >= 6;
+  // Case explicite, jamais pré-cochée : seule la CRÉATION de compte
+  // l'exige (se connecter à un compte existant ne redemande rien).
+  const peutCreer = valide && (!features.rgpd || accepteCGU);
 
   const lancer = async (action: () => Promise<string | null>) => {
     setOccupe(true);
@@ -137,6 +144,20 @@ export function Connexion() {
     const message = await action();
     if (message) setErreur(message);
     setOccupe(false);
+  };
+
+  const creer = async (): Promise<string | null> => {
+    const message = await creerCompte(adresse, motDePasse);
+    if (message) return message;
+    if (features.rgpd) {
+      try {
+        await journaliserConsentement('terms', identiteEditeur.versionTextes, true);
+      } catch {
+        // Le compte reste créé même si la journalisation échoue : ne
+        // jamais bloquer une inscription sur un problème d'écriture annexe.
+      }
+    }
+    return null;
   };
 
   return (
@@ -180,10 +201,25 @@ export function Connexion() {
           >
             {occupe ? 'Connexion…' : 'Se connecter'}
           </button>
+
+          {features.rgpd && (
+            <label className="ligne-case">
+              <input
+                type="checkbox"
+                checked={accepteCGU}
+                onChange={(e) => setAccepteCGU(e.target.checked)}
+              />
+              <span>
+                J’ai lu et j’accepte les{' '}
+                <strong>conditions générales d’utilisation</strong> et la{' '}
+                <strong>politique de confidentialité</strong>.
+              </span>
+            </label>
+          )}
           <button
             className="bouton"
-            disabled={!valide || occupe}
-            onClick={() => void lancer(() => creerCompte(adresse, motDePasse))}
+            disabled={!peutCreer || occupe}
+            onClick={() => void lancer(creer)}
           >
             Créer un compte
           </button>

@@ -10,6 +10,8 @@ import { Import } from './screens/Import.tsx';
 import { Rapprochement } from './screens/Rapprochement.tsx';
 import { Configurer } from './screens/Configurer.tsx';
 import { Plus } from './screens/Plus.tsx';
+import { Confidentialite } from './screens/Confidentialite.tsx';
+import { features } from './config/features.config.ts';
 import { SaisieRapide } from './components/SaisieRapide.tsx';
 import { installerSyncAutomatique, synchroniser } from './db/sync.ts';
 import { useOutboxCount } from './state/useDonnees.ts';
@@ -107,6 +109,7 @@ function Application() {
         {onglet === 'rapprochement' && <Rapprochement />}
         {onglet === 'configurer' && <Configurer />}
         {onglet === 'parametres' && <Parametres />}
+        {onglet === 'confidentialite' && features.rgpd && <Confidentialite />}
         {onglet === 'plus' && <Plus onOuvrir={(cle) => setOnglet(cle as Onglet)} />}
       </main>
 

@@ -1,4 +1,5 @@
 import { Carte } from '../components/ui.tsx';
+import { features } from '../config/features.config.ts';
 
 export interface EntreePlus {
   cle: string;
@@ -14,6 +15,9 @@ const ENTREES: EntreePlus[] = [
   { cle: 'rapprochement', libelle: 'Rapprochement', description: 'Vérifier le solde face au relevé', emoji: '🧮' },
   { cle: 'configurer', libelle: 'Configuration', description: 'Revenus, charges, enveloppes', emoji: '⚙️' },
   { cle: 'parametres', libelle: 'Réglages', description: 'Synchronisation, comptes, session', emoji: '🔧' },
+  ...(features.rgpd
+    ? [{ cle: 'confidentialite', libelle: 'Confidentialité', description: 'CGU, mentions légales, vos droits', emoji: '📜' }]
+    : []),
 ];
 
 /**

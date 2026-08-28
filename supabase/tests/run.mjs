@@ -263,7 +263,7 @@ if (fail === 0) {
         -- écriture (rôle owner) délibérément distinctes : un simple
         -- "for all using (x) with check (x)" ne peut pas les exprimer
         -- toutes les deux (voir 0013_workspaces.sql).
-        and tablename not in ('workspaces', 'workspace_members')
+        and tablename not in ('workspaces', 'workspace_members', 'consent_logs')
       group by tablename having count(*) <> 1
     `);
     if (r.rows.length > 0) throw new Error(JSON.stringify(r.rows));
@@ -431,6 +431,61 @@ if (fail === 0) {
     if (fuite) throw new Error('FUITE : auto-invitation acceptée dans l’espace d’un autre');
   });
 
+  console.log('\n=== Conformité ===');
+
+  await verifie('un consentement journalisé peut être lu par son auteur', async () => {
+    await db.exec('begin;');
+    await sousIdentite(
+      UID,
+      `insert into public.consent_logs (user_id, consent_kind, version, granted)
+         values ('${UID}', 'terms', '2026-08-01', true)`,
+    );
+    const r = await sousIdentite(UID, `select count(*)::int as n from public.consent_logs where user_id = '${UID}'`);
+    await db.exec('rollback;');
+    if (r.rows[0].n !== 1) throw new Error('le consentement inséré n’est pas relu');
+  });
+
+  await verifie('consent_logs est immuable : ni update ni delete, même par son auteur', async () => {
+    // Sans policy pour UPDATE/DELETE, la RLS ne lève PAS d'erreur : elle
+    // rend simplement 0 ligne visible pour la clause USING, donc la
+    // commande "réussit" en touchant 0 ligne. C'est cette absence d'effet
+    // qu'il faut vérifier, pas une exception.
+    const CONSENT_ID = '44444444-4444-4444-4444-444444444444';
+    await db.exec('begin;');
+    await db.exec(
+      `insert into public.consent_logs (id, user_id, consent_kind, version, granted)
+         values ('${CONSENT_ID}', '${UID}', 'terms', '2026-08-01', true)`,
+    );
+    await sousIdentite(UID, `update public.consent_logs set granted = false where id = '${CONSENT_ID}'`);
+    const apresUpdate = await db.query(`select granted from public.consent_logs where id = '${CONSENT_ID}'`);
+    await sousIdentite(UID, `delete from public.consent_logs where id = '${CONSENT_ID}'`);
+    const apresDelete = await db.query(`select count(*)::int as n from public.consent_logs where id = '${CONSENT_ID}'`);
+    await db.exec('rollback;');
+    if (apresUpdate.rows[0].granted !== true) throw new Error('un update a modifié un consentement immuable');
+    if (apresDelete.rows[0].n !== 1) throw new Error('un delete a supprimé un consentement immuable');
+  });
+
+  await verifie('un consentement d’un autre utilisateur reste invisible', async () => {
+    await db.exec('begin;');
+    const r = await sousIdentite(AUTRE, `select count(*)::int as n from public.consent_logs where user_id = '${UID}'`);
+    await db.exec('rollback;');
+    if (r.rows[0].n !== 0) throw new Error('FUITE : consentement d’un autre utilisateur visible');
+  });
+
+  await verifie('delete_my_account() supprime le compte appelant et tout ce qui en dépend', async () => {
+    await db.exec('begin;');
+    await sousIdentite(AUTRE, 'select public.delete_my_account()');
+    const users = await db.query(`select count(*)::int as n from public.users where id = '${AUTRE}'`);
+    const auth = await db.query(`select count(*)::int as n from auth.users where id = '${AUTRE}'`);
+    const comptes = await db.query(`select count(*)::int as n from public.accounts where user_id = '${AUTRE}'`);
+    const autresUsers = await db.query(`select count(*)::int as n from public.users where id = '${UID}'`);
+    await db.exec('rollback;');
+    if (users.rows[0].n !== 0) throw new Error('le profil applicatif survit à la suppression');
+    if (auth.rows[0].n !== 0) throw new Error('le compte d’authentification survit à la suppression');
+    if (comptes.rows[0].n !== 0) throw new Error('des comptes bancaires survivent (ON DELETE CASCADE en défaut)');
+    if (autresUsers.rows[0].n !== 1) throw new Error('FUITE : delete_my_account() a touché un autre utilisateur');
+  });
+
   console.log('\n=== Seed généré depuis la fixture du moteur ===');
 
   const SEED_UID = '77777777-7777-7777-7777-777777777777';
@@ -587,13 +642,13 @@ if (fail === 0) {
   });
 
   console.log('\n=== Couverture des tables attendues ===');
-  await verifie('les 19 tables prévues existent', async () => {
+  await verifie('les 20 tables prévues existent', async () => {
     const attendues = [
       'users', 'accounts', 'transactions', 'categories', 'budget_periods', 'budgets',
       'savings_goals', 'savings_transactions', 'loans', 'recurring_expenses',
       'annual_provisions', 'one_off_liabilities', 'bank_connections', 'bank_sync_logs',
       'import_jobs', 'categorization_rules', 'recurring_incomes',
-      'workspaces', 'workspace_members',
+      'workspaces', 'workspace_members', 'consent_logs',
     ];
     const r = await db.query(`
       select table_name from information_schema.tables
