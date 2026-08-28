@@ -293,9 +293,12 @@ body {
   display: flex; align-items: flex-end; z-index: 20;
 }
 .feuille-contenu {
-  width: 100%; max-height: 92vh; overflow-y: auto;
+  width: 100%; max-height: calc(92vh - env(safe-area-inset-top)); overflow-y: auto;
   background: var(--fond); border-radius: 18px 18px 0 0;
-  padding: 18px var(--marge) calc(env(safe-area-inset-bottom) + 22px);
+  /* Une feuille assez remplie (ex. Saisie rapide avec photo) peut grandir
+     jusqu'à toucher le haut de l'écran : sans cette marge, son en-tête
+     (« Annuler ») se retrouve sous l'encoche/la barre de statut. */
+  padding: calc(env(safe-area-inset-top) + 18px) var(--marge) calc(env(safe-area-inset-bottom) + 22px);
   display: flex; flex-direction: column; gap: 10px;
 }
 .feuille-tete { display: flex; justify-content: space-between; align-items: center; }
