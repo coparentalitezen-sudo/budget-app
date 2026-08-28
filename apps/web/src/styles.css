@@ -88,6 +88,11 @@ body {
   color: var(--texte-doux); font-weight: 600;
 }
 .solde-detail { font-size: 12px; color: var(--texte-doux); }
+.solde-lien-detail { align-self: flex-start; padding: 0; margin-top: 2px; font-size: 12px; }
+.detail-solde-soustitre {
+  font-size: 12px; font-weight: 600; color: var(--texte-doux);
+  text-transform: uppercase; letter-spacing: 0.03em; margin: 10px 0 2px;
+}
 /* Mis en avant comme ESTIMATION de la situation actuelle, distincte du fait constaté. */
 .solde-bloc-theorique { background: var(--surface-haute); }
 .solde-bloc-theorique .solde-libelle { color: var(--accent); }
@@ -338,8 +343,9 @@ body {
 /* Bandeau de mise à jour PWA : jamais d'action automatique, seulement une
    invite — voir src/pwa.ts. Position fixe pour rester visible même si
    l'utilisateur a déjà défilé la page. */
+/* Sous l'en-tête, jamais collée au tout premier bord de l'écran : voir
+   App.tsx, monté juste après `.entete`, avant la zone défilante `.contenu`. */
 .bandeau-maj {
-  position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 10px 14px; background: var(--surface-haute);
   border-bottom: 1px solid var(--bordure);

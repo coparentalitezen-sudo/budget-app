@@ -33,12 +33,9 @@ const SOUS_PLUS: readonly CleOnglet[] = app.navigation.sousPlus;
 
 export default function App() {
   return (
-    <>
-      <BandeauMiseAJour />
-      <FournisseurSession>
-        <Application />
-      </FournisseurSession>
-    </>
+    <FournisseurSession>
+      <Application />
+    </FournisseurSession>
   );
 }
 
@@ -108,6 +105,7 @@ function Application() {
     return (
       <div className="app">
         <header className="entete"><h1>{app.identite.nom}</h1></header>
+        <BandeauMiseAJour />
         <main className="contenu"><Connexion /></main>
       </div>
     );
@@ -123,6 +121,8 @@ function Application() {
         {!enLigne && <span className="badge badge-hors-ligne">Hors ligne</span>}
         {enAttente > 0 && <span className="badge">{enAttente} en attente</span>}
       </header>
+
+      <BandeauMiseAJour />
 
       <main className="contenu">
         {onglet === 'accueil' && (

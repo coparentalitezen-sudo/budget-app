@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { synthetiserMois, synthetiserSemaine } from '@budget/core/src/budget.ts';
 import { situationVirement } from '@budget/core/src/tresorerie.ts';
 import { projeterSoldeTheorique } from '@budget/core/src/projection.ts';
@@ -5,7 +6,7 @@ import { genererAlertes } from '@budget/core/src/alertes.ts';
 import { periodeDe, joursDansMois } from '@budget/core/src/periode.ts';
 import { Anneau, PALETTE_ANNEAU, type PartAnneau } from '../components/Anneau.tsx';
 import {
-  Carte, Jauge, Valeur, IconeBadge, JaugeSemiCirculaire,
+  Carte, Jauge, Ligne, Valeur, IconeBadge, JaugeSemiCirculaire,
   COULEUR_REVENUS, COULEUR_DEPENSES, COULEUR_EPARGNE,
 } from '../components/ui.tsx';
 import {
@@ -59,6 +60,7 @@ export function Dashboard({
   const netRecurrentAVenir = soldeCompte
     ? soldeCompte.revenusAVenir - soldeCompte.chargesAVenir - soldeCompte.provisionsAVenir - soldeCompte.epargneAVenir
     : 0;
+  const [detailSoldeOuvert, setDetailSoldeOuvert] = useState(false);
 
   /* --- Anneau des dépenses : issu de mois.categories ----------------- */
   const totalDepense = mois.depensesVariables;
@@ -159,8 +161,67 @@ export function Dashboard({
                 {montantSigne(netRecurrentAVenir)} de récurrentes attendues d’ici fin de mois
               </span>
             )}
+            <button className="lien solde-lien-detail" onClick={() => setDetailSoldeOuvert((v) => !v)}>
+              {detailSoldeOuvert ? 'Masquer le détail' : 'Voir le détail'}
+            </button>
           </div>
         </section>
+      )}
+
+      {soldeCompte && detailSoldeOuvert && (
+        <Carte titre="Détail du solde théorique">
+          <p className="note">
+            Tout ce qui compte dans le calcul : les opérations déjà saisies mais pas
+            encore retrouvées sur un relevé, puis les échéances récurrentes encore à
+            venir ce mois-ci.
+          </p>
+
+          {soldeCompte.operationsNonPointees.length > 0 && (
+            <>
+              <p className="detail-solde-soustitre">Opérations non pointées</p>
+              {soldeCompte.operationsNonPointees.map((l) => (
+                <div key={l.transaction.id} className="transaction">
+                  <div className="transaction-principal">
+                    <span className="transaction-libelle">
+                      {l.transaction.commercant ?? l.transaction.description ?? 'Sans libellé'}
+                    </span>
+                    <span className={`transaction-montant ton-${l.contribution >= 0 ? 'positif' : 'neutre'}`}>
+                      {montantSigne(l.contribution)}
+                    </span>
+                  </div>
+                  <div className="transaction-meta">{dateCourte(l.transaction.date)}</div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {(soldeCompte.revenusAVenirDetail.length > 0 ||
+            soldeCompte.chargesAVenirDetail.length > 0 ||
+            soldeCompte.provisionsAVenirDetail.length > 0 ||
+            soldeCompte.epargneAVenir > 0) && (
+            <>
+              <p className="detail-solde-soustitre">Récurrentes attendues d’ici fin de mois</p>
+              {soldeCompte.revenusAVenirDetail.map((l) => (
+                <Ligne key={`r-${l.nom}`} libelle={l.nom} valeur={montantSigne(l.montant)} ton="positif" />
+              ))}
+              {soldeCompte.chargesAVenirDetail.map((l) => (
+                <Ligne key={`c-${l.nom}`} libelle={l.nom} valeur={montantSigne(-l.montant)} />
+              ))}
+              {soldeCompte.provisionsAVenirDetail.map((l) => (
+                <Ligne key={`p-${l.nom}`} libelle={l.nom} valeur={montantSigne(-l.montant)} />
+              ))}
+              {soldeCompte.epargneAVenir > 0 && (
+                <Ligne libelle="Épargne (versement prévu)" valeur={montantSigne(-soldeCompte.epargneAVenir)} />
+              )}
+            </>
+          )}
+
+          {soldeCompte.fluxNonDates.length > 0 && (
+            <p className="note">
+              Jour non confirmé, donc non compté ici : {soldeCompte.fluxNonDates.join(', ')}.
+            </p>
+          )}
+        </Carte>
       )}
 
       {/* 2. Deux anneaux côte à côte */}

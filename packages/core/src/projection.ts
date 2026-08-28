@@ -4,11 +4,20 @@ import type { Compte, Configuration, Transaction } from './types.ts';
 import { situationEpargne, synthetiserMois } from './budget.ts';
 import { calculerSoldeTheorique, type SoldeCompte } from './rapprochement.ts';
 
+export interface LigneRecurrente {
+  nom: string;
+  montant: Cents;
+}
+
 interface RecurrentsAVenir {
   revenusAVenir: Cents;
   chargesAVenir: Cents;
   provisionsAVenir: Cents;
   epargneAVenir: Cents;
+  /** Détail nominatif, pour l'affichage (« qu'est-ce qui compte, exactement ? »). */
+  revenusAVenirDetail: LigneRecurrente[];
+  chargesAVenirDetail: LigneRecurrente[];
+  provisionsAVenirDetail: LigneRecurrente[];
   /** Flux dont le jour de valeur n'est pas confirmé (traités prudemment). */
   fluxNonDates: string[];
 }
@@ -45,20 +54,22 @@ function calculerRecurrentsAVenir(
     (!e.debut || p >= e.debut) && (!e.fin || p <= e.fin);
 
   // Revenu sans jour confirmé -> supposé déjà encaissé (prudent).
-  const revenusAVenir = somme(
-    config.revenus.filter((r) => actif(r) && r.jour !== null && r.jour > jour).map((r) => r.montant),
-  );
+  const revenusEchus = config.revenus.filter((r) => actif(r) && r.jour !== null && r.jour > jour);
   // Charge sans jour confirmé -> supposée encore à décaisser (prudent).
-  const chargesAVenir = somme(
-    config.charges
-      .filter((c) => actif(c) && (c.jour === null || c.jour > jour))
-      .map((c) => c.montant),
+  const chargesEchues = config.charges.filter(
+    (c) => actif(c) && (c.jour === null || c.jour > jour),
   );
-  const provisionsAVenir = somme(
-    config.provisions
-      .filter((pr) => pr.jourDotation === null || pr.jourDotation > jour)
-      .map((pr) => pr.dotationMensuelle),
+  const provisionsEchues = config.provisions.filter(
+    (pr) => pr.jourDotation === null || pr.jourDotation > jour,
   );
+
+  const revenusAVenirDetail = revenusEchus.map((r) => ({ nom: r.nom, montant: r.montant }));
+  const chargesAVenirDetail = chargesEchues.map((c) => ({ nom: c.nom, montant: c.montant }));
+  const provisionsAVenirDetail = provisionsEchues.map((pr) => ({ nom: pr.nom, montant: pr.dotationMensuelle }));
+
+  const revenusAVenir = somme(revenusEchus.map((r) => r.montant));
+  const chargesAVenir = somme(chargesEchues.map((c) => c.montant));
+  const provisionsAVenir = somme(provisionsEchues.map((pr) => pr.dotationMensuelle));
 
   const mois = synthetiserMois(config, transactions, p);
   // On projette le versement RÉELLEMENT exécutable, pas l'objectif théorique :
@@ -69,7 +80,11 @@ function calculerRecurrentsAVenir(
     situationEpargne(config, p).versementBudgetaire - mois.epargneRealisee,
   );
 
-  return { revenusAVenir, chargesAVenir, provisionsAVenir, epargneAVenir, fluxNonDates };
+  return {
+    revenusAVenir, chargesAVenir, provisionsAVenir, epargneAVenir,
+    revenusAVenirDetail, chargesAVenirDetail, provisionsAVenirDetail,
+    fluxNonDates,
+  };
 }
 
 export interface ProjectionSolde {
@@ -144,6 +159,9 @@ export interface SoldeTheoriqueProjete extends SoldeCompte {
   chargesAVenir: Cents;
   provisionsAVenir: Cents;
   epargneAVenir: Cents;
+  revenusAVenirDetail: LigneRecurrente[];
+  chargesAVenirDetail: LigneRecurrente[];
+  provisionsAVenirDetail: LigneRecurrente[];
   /** Flux dont le jour de valeur n'est pas confirmé (traités prudemment). */
   fluxNonDates: string[];
 }
@@ -167,19 +185,15 @@ export function projeterSoldeTheorique(
   aujourdhui: DateISO,
 ): SoldeTheoriqueProjete {
   const base = calculerSoldeTheorique(transactions, compte);
-  const { revenusAVenir, chargesAVenir, provisionsAVenir, epargneAVenir, fluxNonDates } =
-    calculerRecurrentsAVenir(config, transactions, aujourdhui);
+  const recurrents = calculerRecurrentsAVenir(config, transactions, aujourdhui);
+  const { revenusAVenir, chargesAVenir, provisionsAVenir, epargneAVenir } = recurrents;
 
   return {
     ...base,
+    ...recurrents,
     soldeTheorique:
       base.soldeTheorique === null
         ? null
         : base.soldeTheorique + revenusAVenir - chargesAVenir - provisionsAVenir - epargneAVenir,
-    revenusAVenir,
-    chargesAVenir,
-    provisionsAVenir,
-    epargneAVenir,
-    fluxNonDates,
   };
 }

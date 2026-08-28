@@ -72,6 +72,17 @@ describe('projeterSoldeTheorique : solde du relevé + non pointées + récurrent
     assert.deepEqual(r.fluxNonDates.sort(), ['Assurance', 'Prime'].sort());
   });
 
+  test('le détail nominatif liste exactement les lignes comptées, avec leur montant', () => {
+    const c = config();
+    const r = projeterSoldeTheorique(c, [], c.comptes[0], AUJOURDHUI);
+    assert.deepEqual(r.revenusAVenirDetail, [{ nom: 'Salaire', montant: eur(2000) }]);
+    assert.deepEqual(
+      r.chargesAVenirDetail.sort((a, b) => a.nom.localeCompare(b.nom)),
+      [{ nom: 'Assurance', montant: eur(50) }, { nom: 'Internet', montant: eur(40) }],
+    );
+    assert.deepEqual(r.provisionsAVenirDetail, [{ nom: 'Impôts', montant: eur(100) }]);
+  });
+
   test('une opération non pointée diminue le socle avant application des récurrentes', () => {
     const c = config();
     const transactions: Transaction[] = [
