@@ -66,7 +66,13 @@ export function Dashboard({
   // pointée et antérieure au relevé n'apparaît nulle part ailleurs dans le
   // détail — sans cette liste, elle donnerait l'impression trompeuse
   // d'avoir été oubliée alors qu'elle est déjà comptée dans le solde réel.
-  const echeancesPassees = echeancesDejaPassees(config, transactions, aujourdhui);
+  // N'affiche QUE les échéances introuvables (à signaler) ou déjà pointées
+  // (invisibles ailleurs) : une échéance non pointée est déjà listée dans
+  // « Opérations non pointées » juste en dessous — la montrer ici aussi
+  // ferait apparaître deux fois le même montant pour la même transaction.
+  const echeancesPassees = echeancesDejaPassees(config, transactions, aujourdhui).filter(
+    (e) => !e.transaction || e.transaction.pointage === 'pointed',
+  );
 
   /* --- Anneau des dépenses : issu de mois.categories ----------------- */
   const totalDepense = mois.depensesVariables;
@@ -195,9 +201,7 @@ export function Dashboard({
                   </div>
                   <div className={`transaction-meta${e.transaction ? '' : ' ton-negatif'}`}>
                     {e.transaction
-                      ? e.transaction.pointage === 'pointed'
-                        ? `Déjà comptée dans le solde réel (${dateCourte(e.transaction.date)})`
-                        : `Comptée ci-dessous, non pointée (${dateCourte(e.transaction.date)})`
+                      ? `Déjà comptée dans le solde réel (${dateCourte(e.transaction.date)})`
                       : 'Aucune opération trouvée ce mois-ci'}
                   </div>
                 </div>
