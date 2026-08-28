@@ -19,7 +19,9 @@ export type SourceTransaction =
   | 'csv_import'
   | 'pdf_import'
   | 'bank_api'
-  | 'google_sheet_import';
+  | 'google_sheet_import'
+  /** Matérialisée automatiquement depuis une échéance récurrente échue — voir `recurrence.ts`. */
+  | 'recurring';
 
 export type StatutTransaction = 'pending' | 'validated';
 

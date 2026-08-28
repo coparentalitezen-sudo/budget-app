@@ -15,6 +15,7 @@ import { features } from './config/features.config.ts';
 import { BandeauMiseAJour } from './components/BandeauMiseAJour.tsx';
 import { SaisieRapide } from './components/SaisieRapide.tsx';
 import { installerSyncAutomatique, synchroniser } from './db/sync.ts';
+import { genererOperationsRecurrentesEnAttente } from './db/repository.ts';
 import { useOutboxCount } from './state/useDonnees.ts';
 import { Connexion, FournisseurSession, useSession } from './lib/session.tsx';
 import { supabaseConfigure } from './lib/supabase.ts';
@@ -68,6 +69,19 @@ function Application() {
   useEffect(() => {
     if (userId) void synchroniser();
   }, [userId]);
+
+  // Matérialise les récurrentes échues (voir `genererOperationsRecurrentesEnAttente`) :
+  // au montage, et à chaque retour au premier plan — un jour peut être
+  // franchi pendant que l'app reste ouverte en arrière-plan sur mobile.
+  // Idempotent : rejouer ne crée jamais de doublon.
+  useEffect(() => {
+    void genererOperationsRecurrentesEnAttente();
+    const declencher = () => {
+      if (document.visibilityState === 'visible') void genererOperationsRecurrentesEnAttente();
+    };
+    document.addEventListener('visibilitychange', declencher);
+    return () => document.removeEventListener('visibilitychange', declencher);
+  }, []);
 
   // Tant que Supabase n'est pas configuré, l'application reste pleinement
   // utilisable en local : la connexion n'est exigée que pour synchroniser.

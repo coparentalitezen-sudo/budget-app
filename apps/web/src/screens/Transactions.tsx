@@ -20,6 +20,7 @@ const LIBELLE_SOURCE: Record<SourceTransaction, string> = {
   pdf_import: 'Import PDF',
   bank_api: 'Banque',
   google_sheet_import: 'Google Sheet',
+  recurring: 'Récurrence',
 };
 
 /** Une opération importée sans catégorie fiable, en attente de décision. */

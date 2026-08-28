@@ -1,6 +1,7 @@
 import { obtenirSupabase } from '../lib/supabase.ts';
-import { db, ecrireMeta, lireMeta } from './dexie.ts';
+import { db, ecrireMeta, enregistrerTransaction, lireMeta } from './dexie.ts';
 import { foyer2026 } from '@budget/core/src/fixtures/foyer2026.ts';
+import { operationsRecurrentesAGenerer } from '@budget/core/src/recurrence.ts';
 import type {
   Categorie, ChargeRecurrente, Compte, Configuration, Credit,
   EcheanceExceptionnelle, LigneBudget, ObjectifEpargne, Provision, RevenuRecurrent,
@@ -317,4 +318,35 @@ export async function patcherCacheConfiguration(
 ): Promise<void> {
   const cache = await configurationLocale();
   if (cache) await ecrireMeta(CLE_CACHE, corriger(cache));
+}
+
+/**
+ * Matérialise les revenus/charges récurrents dont le jour est atteint en
+ * transactions `pending`/non pointées (voir `recurrence.ts`) — plutôt que
+ * de les supposer silencieusement « déjà exécutés » sans laisser de trace.
+ * Idempotent (id déterministe + vérification sur une saisie équivalente
+ * déjà présente) : rejouable à chaque lancement sans jamais dupliquer.
+ * Sans effet tant que la configuration n'est pas encore en cache local.
+ */
+export async function genererOperationsRecurrentesEnAttente(): Promise<number> {
+  const config = await configurationLocale();
+  if (!config) return 0;
+  const transactions = await db.transactions.toArray();
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const generations = operationsRecurrentesAGenerer(config, transactions, aujourdhui);
+  for (const g of generations) {
+    await enregistrerTransaction({
+      id: g.id,
+      date: g.date,
+      montant: g.montant,
+      type: g.type,
+      categorieId: g.categorieId,
+      compteId: g.compteId,
+      source: 'recurring',
+      statut: 'pending',
+      pointage: 'unpointed',
+      description: g.description,
+    });
+  }
+  return generations.length;
 }
