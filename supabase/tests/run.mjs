@@ -70,7 +70,8 @@ if (fail === 0) {
   await db.exec(`
     insert into auth.users (id, email) values ('${UID}', 'moi@example.test');
     insert into public.users (id, display_name, safety_buffer_cents)
-      values ('${UID}', 'Moi', 15000);
+      values ('${UID}', 'Moi', 15000)
+      on conflict (id) do update set display_name = excluded.display_name, safety_buffer_cents = excluded.safety_buffer_cents;
     insert into public.accounts (id, user_id, name, type, balance_cents, balance_as_of) values
       ('22222222-0000-0000-0000-000000000001', '${UID}', 'Compte courant', 'courant', null, null),
       ('22222222-0000-0000-0000-000000000002', '${UID}', 'Compte provisions', 'provisions', null, null);
@@ -257,7 +258,22 @@ if (fail === 0) {
   await verifie('chaque table métier a exactement une politique propriétaire', async () => {
     const r = await db.query(`
       select tablename, count(*) as n from pg_policies
-      where schemaname = 'public' group by tablename having count(*) <> 1
+      where schemaname = 'public'
+        -- workspaces/workspace_members ont une lecture (appartenance) et une
+        -- écriture (rôle owner) délibérément distinctes : un simple
+        -- "for all using (x) with check (x)" ne peut pas les exprimer
+        -- toutes les deux (voir 0013_workspaces.sql).
+        and tablename not in ('workspaces', 'workspace_members')
+      group by tablename having count(*) <> 1
+    `);
+    if (r.rows.length > 0) throw new Error(JSON.stringify(r.rows));
+  });
+
+  await verifie('workspaces/workspace_members ont une politique de lecture et une d’écriture', async () => {
+    const r = await db.query(`
+      select tablename, count(*) as n from pg_policies
+      where schemaname = 'public' and tablename in ('workspaces', 'workspace_members')
+      group by tablename having count(*) < 2
     `);
     if (r.rows.length > 0) throw new Error(JSON.stringify(r.rows));
   });
@@ -315,7 +331,8 @@ if (fail === 0) {
   const AUTRE = '99999999-9999-9999-9999-999999999999';
   await db.exec(`
     insert into auth.users (id, email) values ('${AUTRE}', 'autre@example.test');
-    insert into public.users (id, display_name) values ('${AUTRE}', 'Autre');
+    insert into public.users (id, display_name) values ('${AUTRE}', 'Autre')
+      on conflict (id) do update set display_name = excluded.display_name;
     insert into public.accounts (user_id, name, type) values ('${AUTRE}', 'Compte de l''autre', 'courant');
     grant usage on schema public to authenticated;
     grant select, insert, update, delete on all tables in schema public to authenticated;
@@ -369,6 +386,49 @@ if (fail === 0) {
     const r = await sousIdentite(AUTRE, 'select count(*)::int as n from public.v_ai_transactions');
     await db.exec('rollback;');
     if (r.rows[0].n !== 0) throw new Error(`FUITE via la vue : ${r.rows[0].n} lignes`);
+  });
+
+  console.log('\n=== Espace de travail (workspace) ===');
+
+  await verifie('l’inscription crée automatiquement un profil et un espace personnel', async () => {
+    const w = await db.query(
+      `select id from public.workspaces where owner_id = '${UID}'`,
+    );
+    if (w.rows.length !== 1) throw new Error(`${w.rows.length} espace(s) pour le propriétaire, 1 attendu`);
+    const m = await db.query(
+      `select role from public.workspace_members where workspace_id = '${w.rows[0].id}' and profile_id = '${UID}'`,
+    );
+    if (m.rows.length !== 1 || m.rows[0].role !== 'owner') {
+      throw new Error('le créateur de l’espace n’en est pas membre avec le rôle owner');
+    }
+  });
+
+  await verifie('un utilisateur ne voit QUE les espaces dont il est membre', async () => {
+    await db.exec('begin;');
+    const r = await sousIdentite(UID, 'select owner_id from public.workspaces');
+    await db.exec('rollback;');
+    if (r.rows.some((x) => x.owner_id === AUTRE)) {
+      throw new Error('FUITE : l’espace d’un autre utilisateur est visible');
+    }
+    if (!r.rows.some((x) => x.owner_id === UID)) throw new Error('son propre espace est masqué');
+  });
+
+  await verifie('rejoindre l’espace d’un autre sans en être owner est rejeté', async () => {
+    const wAutre = await db.query(`select id from public.workspaces where owner_id = '${AUTRE}'`);
+    await db.exec('begin;');
+    let fuite = false;
+    try {
+      await sousIdentite(
+        UID,
+        `insert into public.workspace_members (workspace_id, profile_id, role)
+           values ('${wAutre.rows[0].id}', '${UID}', 'member')`,
+      );
+      fuite = true;
+    } catch {
+      // rejet attendu : app.member_role_in() renvoie NULL pour un non-membre
+    }
+    await db.exec('rollback;');
+    if (fuite) throw new Error('FUITE : auto-invitation acceptée dans l’espace d’un autre');
   });
 
   console.log('\n=== Seed généré depuis la fixture du moteur ===');
@@ -527,12 +587,13 @@ if (fail === 0) {
   });
 
   console.log('\n=== Couverture des tables attendues ===');
-  await verifie('les 16 tables prévues existent', async () => {
+  await verifie('les 19 tables prévues existent', async () => {
     const attendues = [
       'users', 'accounts', 'transactions', 'categories', 'budget_periods', 'budgets',
       'savings_goals', 'savings_transactions', 'loans', 'recurring_expenses',
       'annual_provisions', 'one_off_liabilities', 'bank_connections', 'bank_sync_logs',
       'import_jobs', 'categorization_rules', 'recurring_incomes',
+      'workspaces', 'workspace_members',
     ];
     const r = await db.query(`
       select table_name from information_schema.tables
