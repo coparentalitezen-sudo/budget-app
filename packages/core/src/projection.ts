@@ -1,26 +1,23 @@
 import { somme, round, type Cents } from './money.ts';
 import { jourDuMois, joursRestantsMois, periodeDe, type DateISO } from './periode.ts';
-import type { Configuration, Transaction } from './types.ts';
+import type { Compte, Configuration, Transaction } from './types.ts';
 import { situationEpargne, synthetiserMois } from './budget.ts';
+import { calculerSoldeTheorique, type SoldeCompte } from './rapprochement.ts';
 
-export interface ProjectionSolde {
-  /** `null` si le solde du compte courant n'est pas renseigné. */
-  soldeActuel: Cents | null;
+interface RecurrentsAVenir {
   revenusAVenir: Cents;
   chargesAVenir: Cents;
   provisionsAVenir: Cents;
   epargneAVenir: Cents;
-  /** Hypothèse prudente : toutes les enveloppes variables sont consommées. */
-  soldeProjetePrudent: Cents | null;
-  /** Hypothèse tendancielle : le rythme de dépense actuel se poursuit. */
-  soldeProjeteTendanciel: Cents | null;
-  rythmeQuotidienConstate: Cents;
   /** Flux dont le jour de valeur n'est pas confirmé (traités prudemment). */
   fluxNonDates: string[];
 }
 
 /**
- * Projection du solde du compte courant à la fin du mois.
+ * Opérations récurrentes (revenus, charges, provisions, épargne) attendues
+ * d'ici la fin du mois — utilisé à la fois par `projeterSolde` et par
+ * `projeterSoldeTheorique`, pour que les deux ne divergent jamais sur ce
+ * qui compte comme « à venir ».
  *
  * Hypothèses explicites :
  * - un flux récurrent dont le `jour` est déjà passé est considéré comme
@@ -30,18 +27,13 @@ export interface ProjectionSolde {
  *   à venir n'est promise), une charge est supposée encore à décaisser.
  *   L'erreur penche toujours du côté défavorable.
  */
-export function projeterSolde(
+function calculerRecurrentsAVenir(
   config: Configuration,
   transactions: Transaction[],
   aujourdhui: DateISO,
-): ProjectionSolde {
+): RecurrentsAVenir {
   const p = periodeDe(aujourdhui);
   const jour = jourDuMois(aujourdhui);
-  const jrMois = joursRestantsMois(aujourdhui);
-  const joursEcoules = jour;
-
-  const compteCourant = config.comptes.find((c) => c.type === 'courant');
-  const soldeActuel = compteCourant?.solde ?? null;
 
   const fluxNonDates = [
     ...config.revenus.filter((r) => r.jour === null).map((r) => r.nom),
@@ -77,6 +69,52 @@ export function projeterSolde(
     situationEpargne(config, p).versementBudgetaire - mois.epargneRealisee,
   );
 
+  return { revenusAVenir, chargesAVenir, provisionsAVenir, epargneAVenir, fluxNonDates };
+}
+
+export interface ProjectionSolde {
+  /** `null` si le solde du compte courant n'est pas renseigné. */
+  soldeActuel: Cents | null;
+  revenusAVenir: Cents;
+  chargesAVenir: Cents;
+  provisionsAVenir: Cents;
+  epargneAVenir: Cents;
+  /** Hypothèse prudente : toutes les enveloppes variables sont consommées. */
+  soldeProjetePrudent: Cents | null;
+  /** Hypothèse tendancielle : le rythme de dépense actuel se poursuit. */
+  soldeProjeteTendanciel: Cents | null;
+  rythmeQuotidienConstate: Cents;
+  /** Flux dont le jour de valeur n'est pas confirmé (traités prudemment). */
+  fluxNonDates: string[];
+}
+
+/**
+ * Risque de découvert à fin de mois, sous deux hypothèses de dépense
+ * variable — sert uniquement à `genererAlertes` (voir `alertes.ts`).
+ *
+ * Part du solde THÉORIQUE (relevé + opérations non pointées), pas du seul
+ * solde du relevé : sans ça, toute opération saisie mais pas encore
+ * retrouvée sur un relevé serait invisible de la projection, faisant
+ * diverger l'alerte de risque de découvert de la réalité déjà connue de
+ * l'application.
+ */
+export function projeterSolde(
+  config: Configuration,
+  transactions: Transaction[],
+  aujourdhui: DateISO,
+): ProjectionSolde {
+  const p = periodeDe(aujourdhui);
+  const jour = jourDuMois(aujourdhui);
+  const jrMois = joursRestantsMois(aujourdhui);
+  const joursEcoules = jour;
+
+  const compteCourant = config.comptes.find((c) => c.type === 'courant');
+  const soldeActuel = compteCourant ? calculerSoldeTheorique(transactions, compteCourant).soldeTheorique : null;
+
+  const { revenusAVenir, chargesAVenir, provisionsAVenir, epargneAVenir, fluxNonDates } =
+    calculerRecurrentsAVenir(config, transactions, aujourdhui);
+
+  const mois = synthetiserMois(config, transactions, p);
   const rythme = joursEcoules > 0 ? round(mois.depensesVariables / joursEcoules) : 0;
   const variablesAVenirTendanciel = rythme * jrMois;
   const variablesAVenirPrudent = Math.max(0, mois.resteADepenser);
@@ -97,6 +135,51 @@ export function projeterSolde(
     soldeProjetePrudent: socle === null ? null : socle - variablesAVenirPrudent,
     soldeProjeteTendanciel: socle === null ? null : socle - variablesAVenirTendanciel,
     rythmeQuotidienConstate: rythme,
+    fluxNonDates,
+  };
+}
+
+export interface SoldeTheoriqueProjete extends SoldeCompte {
+  revenusAVenir: Cents;
+  chargesAVenir: Cents;
+  provisionsAVenir: Cents;
+  epargneAVenir: Cents;
+  /** Flux dont le jour de valeur n'est pas confirmé (traités prudemment). */
+  fluxNonDates: string[];
+}
+
+/**
+ * Solde théorique du compte courant, enrichi des opérations RÉCURRENTES
+ * encore attendues d'ici la fin du mois (revenus, charges, provisions,
+ * épargne — jamais les dépenses variables, trop incertaines pour être
+ * comptées comme un fait). `soldeTheorique` porte donc :
+ *
+ *   solde du relevé + opérations non pointées + récurrentes à venir.
+ *
+ * Volontairement UNE seule valeur, pas deux hypothèses : le prochain relevé
+ * importé révèle de lui-même l'écart via le rapprochement bancaire, aucun
+ * besoin d'un second chiffre « prudent »/« tendanciel » ici.
+ */
+export function projeterSoldeTheorique(
+  config: Configuration,
+  transactions: Transaction[],
+  compte: Compte,
+  aujourdhui: DateISO,
+): SoldeTheoriqueProjete {
+  const base = calculerSoldeTheorique(transactions, compte);
+  const { revenusAVenir, chargesAVenir, provisionsAVenir, epargneAVenir, fluxNonDates } =
+    calculerRecurrentsAVenir(config, transactions, aujourdhui);
+
+  return {
+    ...base,
+    soldeTheorique:
+      base.soldeTheorique === null
+        ? null
+        : base.soldeTheorique + revenusAVenir - chargesAVenir - provisionsAVenir - epargneAVenir,
+    revenusAVenir,
+    chargesAVenir,
+    provisionsAVenir,
+    epargneAVenir,
     fluxNonDates,
   };
 }

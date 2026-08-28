@@ -1,16 +1,15 @@
 import { synthetiserMois, synthetiserSemaine } from '@budget/core/src/budget.ts';
 import { situationVirement } from '@budget/core/src/tresorerie.ts';
-import { projeterSolde } from '@budget/core/src/projection.ts';
+import { projeterSoldeTheorique } from '@budget/core/src/projection.ts';
 import { genererAlertes } from '@budget/core/src/alertes.ts';
-import { calculerSoldeTheorique } from '@budget/core/src/rapprochement.ts';
-import { periodeDe, joursDansMois, finDeMois } from '@budget/core/src/periode.ts';
+import { periodeDe, joursDansMois } from '@budget/core/src/periode.ts';
 import { Anneau, PALETTE_ANNEAU, type PartAnneau } from '../components/Anneau.tsx';
 import {
   Carte, Jauge, Valeur, IconeBadge, JaugeSemiCirculaire,
   COULEUR_REVENUS, COULEUR_DEPENSES, COULEUR_EPARGNE,
 } from '../components/ui.tsx';
 import {
-  aujourdhuiISO, dateCourte, moisPilule, montant, montantSigne, nomMois, pourcent, jourMois,
+  aujourdhuiISO, dateCourte, moisPilule, montant, montantSigne, nomMois, pourcent,
 } from '../lib/format.ts';
 import { useConfiguration, useTransactions } from '../state/useDonnees.ts';
 import { estARenseigner } from './Transactions.tsx';
@@ -21,7 +20,7 @@ type CibleNavigation = 'budget' | 'epargne' | 'configurer';
  * Tableau de bord.
  *
  * AUCUN calcul métier ici. Tout provient de `synthetiserMois`,
- * `synthetiserSemaine`, `situationVirement`, `projeterSolde` et
+ * `synthetiserSemaine`, `situationVirement`, `projeterSoldeTheorique` et
  * `genererAlertes`. Ce fichier ne fait que choisir des couleurs, icônes,
  * trier/replier pour l'affichage et mettre en forme — jamais recalculer
  * une valeur financière.
@@ -41,7 +40,6 @@ export function Dashboard({
   const mois = synthetiserMois(config, transactions, periode);
   const semaine = synthetiserSemaine(config, transactions, aujourdhui);
   const virement = situationVirement(config, transactions, aujourdhui);
-  const projection = projeterSolde(config, transactions, aujourdhui);
   const alertes = genererAlertes(config, transactions, aujourdhui);
   const epargne = mois.epargne;
 
@@ -49,11 +47,18 @@ export function Dashboard({
 
   const aRenseigner = transactions.filter(estARenseigner).length;
 
-  // Solde réel (relevé) / solde théorique (relevé + opérations non
-  // pointées) : calcul entièrement dans `calculerSoldeTheorique`, jamais
-  // recalculé ici — voir packages/core/src/rapprochement.ts.
+  // Solde théorique = solde du relevé + opérations non pointées +
+  // opérations récurrentes encore attendues d'ici la fin du mois : calcul
+  // entièrement dans `projeterSoldeTheorique`, jamais recalculé ici — voir
+  // packages/core/src/projection.ts. Le prochain relevé importé révèle de
+  // lui-même l'écart via le rapprochement bancaire.
   const compteCourant = config.comptes.find((c) => c.type === 'courant');
-  const soldeCompte = compteCourant ? calculerSoldeTheorique(transactions, compteCourant) : null;
+  const soldeCompte = compteCourant
+    ? projeterSoldeTheorique(config, transactions, compteCourant, aujourdhui)
+    : null;
+  const netRecurrentAVenir = soldeCompte
+    ? soldeCompte.revenusAVenir - soldeCompte.chargesAVenir - soldeCompte.provisionsAVenir - soldeCompte.epargneAVenir
+    : 0;
 
   /* --- Anneau des dépenses : issu de mois.categories ----------------- */
   const totalDepense = mois.depensesVariables;
@@ -100,10 +105,6 @@ export function Dashboard({
   const ratioEpargneReelle = Math.max(0, mois.progressionEpargne);
 
   const ratioHero = mois.budgetVariable > 0 ? mois.depensesVariables / mois.budgetVariable : 0;
-
-  const tendance = projection.soldeProjeteTendanciel === null
-    ? null
-    : projection.soldeProjeteTendanciel >= 0 ? 'hausse' : 'baisse';
 
   return (
     <div className="ecran">
@@ -153,6 +154,11 @@ export function Dashboard({
                 ? 'Aucune opération non pointée'
                 : `${soldeCompte.operationsNonPointees.length} opération(s) non pointée(s) · ${montantSigne(soldeCompte.ecartNonPointe)}`}
             </span>
+            {netRecurrentAVenir !== 0 && (
+              <span className="solde-detail">
+                {montantSigne(netRecurrentAVenir)} de récurrentes attendues d’ici fin de mois
+              </span>
+            )}
           </div>
         </section>
       )}
@@ -300,36 +306,7 @@ export function Dashboard({
         </Carte>
       </div>
 
-      {/* 7. Projection fin de mois */}
-      <Carte
-        titre="Projection fin de mois"
-        action={<span className="badge">{jourMois(finDeMois(periode))}</span>}
-      >
-        <div className="projection-corps">
-          <div className="projection-principal">
-            <span className="ligne-libelle">Solde prévisionnel</span>
-            <Valeur texte={montantSigne(projection.soldeProjeteTendanciel)} taille="grande" />
-            <span className="note">si tendance actuelle</span>
-          </div>
-          {tendance && (
-            <span className={`projection-tendance projection-${tendance}`}>
-              {tendance === 'hausse' ? '▲' : '▼'}
-            </span>
-          )}
-        </div>
-        <div className="categorie-pied">
-          <span>Prudente</span>
-          <span>{montant(projection.soldeProjetePrudent)}</span>
-        </div>
-        {projection.soldeProjetePrudent === null && (
-          <p className="note">
-            Solde du compte courant inconnu : aucune projection n’est produite plutôt
-            qu’un chiffre calculé sur un solde supposé nul.
-          </p>
-        )}
-      </Carte>
-
-      {/* 8. Alertes */}
+      {/* 7. Alertes */}
       {alertesFortes.length > 0 && (
         <Carte titre="À surveiller">
           {alertesFortes.map((a, i) => (

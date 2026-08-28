@@ -393,13 +393,6 @@ body {
 .semi-jauge-valeur { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .semi-jauge-label { font-size: 11px; color: var(--texte-doux); }
 
-/* --- Projection -------------------------------------------------------- */
-.projection-corps { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.projection-principal { display: flex; flex-direction: column; gap: 2px; }
-.projection-tendance { font-size: 22px; }
-.projection-hausse { color: var(--accent); }
-.projection-baisse { color: var(--critique); }
-
 .alerte-icone { margin-right: 6px; }
 
 /* --- Menu « Plus » ----------------------------------------------------- */
