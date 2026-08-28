@@ -98,7 +98,13 @@ body {
   color: var(--texte-doux); font-weight: 600;
 }
 .solde-detail { font-size: 12px; color: var(--texte-doux); }
-.solde-lien-detail { align-self: flex-start; padding: 0; margin-top: 2px; font-size: 12px; }
+/* Zone tactile généreuse (≥ 44 px, recommandation Apple) malgré un texte
+   petit : `padding: 0` rendait ce bouton quasi impossible à toucher de
+   façon fiable, écrasé contre la ligne de texte juste au-dessus. */
+.solde-lien-detail {
+  align-self: stretch; text-align: left; margin-top: 4px;
+  padding: 10px 0 2px; font-size: 12px; min-height: 44px;
+}
 .detail-solde-soustitre {
   font-size: 12px; font-weight: 600; color: var(--texte-doux);
   text-transform: uppercase; letter-spacing: 0.03em; margin: 10px 0 2px;
