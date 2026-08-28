@@ -3,6 +3,8 @@ import { eur } from '@budget/core/src/money.ts';
 import type { Transaction, TypeTransaction } from '@budget/core/src/types.ts';
 import { enregistrerJustificatif, enregistrerTransaction } from '../db/dexie.ts';
 import { redimensionnerEtCompresser } from '../lib/image.ts';
+import { moteurOcr } from '../lib/ocr/index.ts';
+import { lireTicket } from '../import/ticket.ts';
 import { aujourdhuiISO } from '../lib/format.ts';
 import { useConfiguration } from '../state/useDonnees.ts';
 
@@ -57,7 +59,18 @@ export function SaisieRapide({ onFerme }: { onFerme: () => void }) {
   const capturerPhoto = async (fichier: File) => {
     setPhotoEnCours(true);
     try {
-      setPhoto(await redimensionnerEtCompresser(fichier));
+      const compresse = await redimensionnerEtCompresser(fichier);
+      setPhoto(compresse);
+      // Lecture OCR du ticket (voir lib/ocr/) : ne préremplit que ce qui a
+      // été lu avec fiabilité, ne touche jamais à un champ sans résultat —
+      // jamais bloquant non plus, la photo reste utilisable si ça échoue.
+      try {
+        const { montant: montantLu, date: dateLue } = await lireTicket(moteurOcr, compresse);
+        if (montantLu !== null) setMontantTexte((montantLu / 100).toFixed(2).replace('.', ','));
+        if (dateLue !== null) setDate(dateLue);
+      } catch {
+        // Le montant et la date restent à saisir à la main.
+      }
     } finally {
       setPhotoEnCours(false);
     }
@@ -110,7 +123,7 @@ export function SaisieRapide({ onFerme }: { onFerme: () => void }) {
           </div>
         ) : (
           <label className="bouton" style={{ display: 'block', textAlign: 'center' }}>
-            {photoEnCours ? 'Traitement…' : '📷 Photographier le ticket'}
+            {photoEnCours ? 'Analyse du ticket…' : '📷 Photographier le ticket'}
             <input
               type="file"
               accept="image/*"

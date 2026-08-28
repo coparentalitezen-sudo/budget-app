@@ -11,13 +11,14 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
+    "@budget/core": "*",
     "@supabase/supabase-js": "^2.45.4",
     "dexie": "^4.0.8",
     "dexie-react-hooks": "^1.1.7",
     "pdfjs-dist": "^4.7.76",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "@budget/core": "*"
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

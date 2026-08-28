@@ -111,6 +111,19 @@ export default defineConfig({
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
             handler: 'NetworkOnly',
           },
+          {
+            // Tesseract.js (OCR de ticket, voir lib/ocr/) récupère son
+            // worker, son cœur WASM et ses données de langue depuis ce CDN
+            // par défaut — jamais empaquetés par Vite. Même logique que
+            // pdf.js : rien à précacher, seulement disponible hors ligne
+            // après un premier usage réel en ligne.
+            urlPattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/(tesseract|@tesseract\.js-data)/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'tesseract',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 90 },
+            },
+          },
         ],
       },
     }),
