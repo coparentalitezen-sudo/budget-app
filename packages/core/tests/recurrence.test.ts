@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { eur } from '../src/money.ts';
-import { operationsRecurrentesAGenerer } from '../src/recurrence.ts';
+import { echeancesDejaPassees, operationsRecurrentesAGenerer } from '../src/recurrence.ts';
 import type { Configuration, Transaction } from '../src/types.ts';
 
 const COURANT = 'cpt_courant';
@@ -106,5 +106,35 @@ describe('operationsRecurrentesAGenerer', () => {
     const r = operationsRecurrentesAGenerer(c, [], '2026-04-30');
     const ligne = r.find((g) => g.description.startsWith('Loyer perçu'));
     assert.equal(ligne?.date, '2026-04-30');
+  });
+});
+
+describe('echeancesDejaPassees', () => {
+  test('liste les échéances confirmées déjà passées, futures et non confirmées exclues', () => {
+    const r = echeancesDejaPassees(config(), [], AUJOURDHUI);
+    const noms = r.map((e) => e.nom);
+    assert.ok(noms.includes('Salaire')); // jour 28 == aujourd’hui
+    assert.ok(noms.includes('CAF')); // jour 6, passé
+    assert.ok(noms.includes('Prêt personnel')); // jour 4, passé
+    assert.ok(!noms.includes('Prime')); // jour inconnu, jamais listée ici
+    assert.ok(!noms.includes('Treizième mois')); // jour 30, pas encore atteint
+    assert.ok(!noms.includes('Prêt immobilier')); // jour 29, pas encore atteint
+    assert.ok(!noms.includes('Taxe (étalée)')); // exclue en août (moisExclus)
+  });
+
+  test('une échéance sans transaction correspondante ce mois-ci ressort avec transaction undefined', () => {
+    const r = echeancesDejaPassees(config(), [], AUJOURDHUI);
+    const caf = r.find((e) => e.nom === 'CAF');
+    assert.equal(caf?.transaction, undefined);
+  });
+
+  test('une échéance déjà couverte par une transaction (même pointée) est retrouvée', () => {
+    const transactions: Transaction[] = [
+      t({ type: 'revenu', montant: 173.66, date: '2026-08-05', pointage: 'pointed' }),
+    ];
+    const r = echeancesDejaPassees(config(), transactions, AUJOURDHUI);
+    const caf = r.find((e) => e.nom === 'CAF');
+    assert.equal(caf?.transaction?.montant, eur(173.66));
+    assert.equal(caf?.transaction?.pointage, 'pointed');
   });
 });

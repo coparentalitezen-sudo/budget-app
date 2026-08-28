@@ -70,15 +70,24 @@ const actifSur = (e: { debut?: Periode; fin?: Periode }, p: Periode): boolean =>
  * Évite de matérialiser un doublon quand la vraie transaction a été entrée
  * à la main avant que cette fonction n'ait tourné.
  */
+function transactionCorrespondante(
+  transactions: Transaction[],
+  p: Periode,
+  type: 'revenu' | 'depense',
+  montant: Cents,
+): Transaction | undefined {
+  return transactions.find(
+    (t) => t.type === type && periodeDe(t.date) === p && t.montant === montant,
+  );
+}
+
 function dejaSaisie(
   transactions: Transaction[],
   p: Periode,
   type: 'revenu' | 'depense',
   montant: Cents,
 ): boolean {
-  return transactions.some(
-    (t) => t.type === type && periodeDe(t.date) === p && t.montant === montant,
-  );
+  return transactionCorrespondante(transactions, p, type, montant) !== undefined;
 }
 
 export function operationsRecurrentesAGenerer(
@@ -133,4 +142,69 @@ export function operationsRecurrentesAGenerer(
   }
 
   return resultats;
+}
+
+export interface EcheancePassee {
+  nom: string;
+  type: 'revenu' | 'depense';
+  montant: Cents;
+  jour: number;
+  /**
+   * La transaction retrouvée pour cette échéance ce mois-ci, s'il y en a
+   * une — pointée (confirmée par un relevé) ou non. `undefined` = aucune
+   * trace trouvée, ce qui ne devrait normalement pas arriver puisque
+   * `operationsRecurrentesAGenerer` en crée une automatiquement dès que le
+   * jour est atteint (sauf si l'appareil qui l'aurait générée n'a pas
+   * encore ouvert l'application depuis).
+   */
+  transaction: Transaction | undefined;
+}
+
+/**
+ * Échéances confirmées (jour non `null`) déjà passées ce mois-ci, avec la
+ * transaction qui les couvre si elle existe — pour EXPLIQUER un solde
+ * théorique, jamais pour le recalculer : une échéance déjà « trouvée » ici
+ * peut très bien être pointée et antérieure au dernier relevé, donc déjà
+ * comptée dans le solde RÉEL plutôt que dans les opérations non pointées —
+ * elle n'apparaît alors nulle part ailleurs dans le détail affiché, ce qui
+ * peut donner l'impression trompeuse qu'elle a été oubliée.
+ */
+export function echeancesDejaPassees(
+  config: Configuration,
+  transactions: Transaction[],
+  aujourdhui: DateISO,
+): EcheancePassee[] {
+  const p = periodeDe(aujourdhui);
+  const jour = jourDuMois(aujourdhui);
+  const { mois } = decomposer(p);
+  const resultats: EcheancePassee[] = [];
+
+  for (const r of config.revenus) {
+    if (r.jour === null || jourEcheance(p, r.jour) > jour || !actifSur(r, p)) continue;
+    resultats.push({
+      nom: r.nom,
+      type: 'revenu',
+      montant: r.montant,
+      jour: r.jour,
+      transaction: transactionCorrespondante(transactions, p, 'revenu', r.montant),
+    });
+  }
+
+  for (const c of config.charges) {
+    if (
+      c.jour === null ||
+      jourEcheance(p, c.jour) > jour ||
+      !actifSur(c, p) ||
+      (c.moisExclus ?? []).includes(mois)
+    ) continue;
+    resultats.push({
+      nom: c.nom,
+      type: 'depense',
+      montant: c.montant,
+      jour: c.jour,
+      transaction: transactionCorrespondante(transactions, p, 'depense', c.montant),
+    });
+  }
+
+  return resultats.sort((a, b) => a.jour - b.jour);
 }

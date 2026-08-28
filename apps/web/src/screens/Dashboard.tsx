@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { synthetiserMois, synthetiserSemaine } from '@budget/core/src/budget.ts';
 import { situationVirement } from '@budget/core/src/tresorerie.ts';
 import { projeterSoldeTheorique } from '@budget/core/src/projection.ts';
+import { echeancesDejaPassees } from '@budget/core/src/recurrence.ts';
 import { genererAlertes } from '@budget/core/src/alertes.ts';
 import { periodeDe, joursDansMois } from '@budget/core/src/periode.ts';
 import { Anneau, PALETTE_ANNEAU, type PartAnneau } from '../components/Anneau.tsx';
@@ -61,6 +62,11 @@ export function Dashboard({
     ? soldeCompte.revenusAVenir - soldeCompte.chargesAVenir - soldeCompte.provisionsAVenir - soldeCompte.epargneAVenir
     : 0;
   const [detailSoldeOuvert, setDetailSoldeOuvert] = useState(false);
+  // Échéances déjà échues ce mois-ci (ex. la CAF, un salaire) : une échéance
+  // pointée et antérieure au relevé n'apparaît nulle part ailleurs dans le
+  // détail — sans cette liste, elle donnerait l'impression trompeuse
+  // d'avoir été oubliée alors qu'elle est déjà comptée dans le solde réel.
+  const echeancesPassees = echeancesDejaPassees(config, transactions, aujourdhui);
 
   /* --- Anneau des dépenses : issu de mois.categories ----------------- */
   const totalDepense = mois.depensesVariables;
@@ -171,10 +177,33 @@ export function Dashboard({
       {soldeCompte && detailSoldeOuvert && (
         <Carte titre="Détail du solde théorique">
           <p className="note">
-            Tout ce qui compte dans le calcul : les opérations déjà saisies mais pas
-            encore retrouvées sur un relevé, puis les échéances récurrentes encore à
-            venir ce mois-ci.
+            Tout ce qui compte dans le calcul : les échéances récurrentes déjà
+            atteintes ce mois-ci, les opérations saisies mais pas encore retrouvées
+            sur un relevé, puis ce qui reste encore à venir.
           </p>
+
+          {echeancesPassees.length > 0 && (
+            <>
+              <p className="detail-solde-soustitre">Échéances de ce mois déjà atteintes</p>
+              {echeancesPassees.map((e) => (
+                <div key={`${e.type}-${e.nom}`} className="transaction">
+                  <div className="transaction-principal">
+                    <span className="transaction-libelle">{e.nom} · jour {e.jour}</span>
+                    <span className={`transaction-montant ton-${e.type === 'revenu' ? 'positif' : 'neutre'}`}>
+                      {montantSigne(e.type === 'revenu' ? e.montant : -e.montant)}
+                    </span>
+                  </div>
+                  <div className={`transaction-meta${e.transaction ? '' : ' ton-negatif'}`}>
+                    {e.transaction
+                      ? e.transaction.pointage === 'pointed'
+                        ? `Déjà comptée dans le solde réel (${dateCourte(e.transaction.date)})`
+                        : `Comptée ci-dessous, non pointée (${dateCourte(e.transaction.date)})`
+                      : 'Aucune opération trouvée ce mois-ci'}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
 
           {soldeCompte.operationsNonPointees.length > 0 && (
             <>
