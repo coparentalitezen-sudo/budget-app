@@ -12,6 +12,7 @@ import { Configurer } from './screens/Configurer.tsx';
 import { Plus } from './screens/Plus.tsx';
 import { Confidentialite } from './screens/Confidentialite.tsx';
 import { features } from './config/features.config.ts';
+import { BandeauMiseAJour } from './components/BandeauMiseAJour.tsx';
 import { SaisieRapide } from './components/SaisieRapide.tsx';
 import { installerSyncAutomatique, synchroniser } from './db/sync.ts';
 import { useOutboxCount } from './state/useDonnees.ts';
@@ -29,9 +30,12 @@ const SOUS_PLUS: readonly CleOnglet[] = app.navigation.sousPlus;
 
 export default function App() {
   return (
-    <FournisseurSession>
-      <Application />
-    </FournisseurSession>
+    <>
+      <BandeauMiseAJour />
+      <FournisseurSession>
+        <Application />
+      </FournisseurSession>
+    </>
   );
 }
 

@@ -58,7 +58,12 @@ export default defineConfig({
     react(),
     ecrireVersionJson(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt', pas 'autoUpdate' : avec 'autoUpdate', vite-plugin-pwa
+      // génère un service worker qui s'active tout seul (skipWaiting +
+      // clientsClaim inconditionnels dès l'installation) — aucune occasion
+      // de demander. 'prompt' laisse le nouveau worker EN ATTENTE ; c'est
+      // `src/pwa.ts` qui décide quand l'activer (bandeau + bouton).
+      registerType: 'prompt',
       // Enregistrement manuel (voir main.tsx) : le script auto-injecté par
       // défaut ne vérifie une mise à jour qu'au chargement de la page, ce
       // qui suffit peu pour une PWA installée sur iPhone — iOS ne relance

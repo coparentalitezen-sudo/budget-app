@@ -1,52 +1,97 @@
 import { registerSW } from 'virtual:pwa-register';
 
 /**
- * Mise à jour du service worker.
+ * Mise à jour du service worker — mode « bandeau + bouton » (06-PWA.md :
+ * « le worker écoute SKIP_WAITING ; le composant ServiceWorker détecte une
+ * nouvelle version et propose de recharger. Ne pas recharger d'autorité,
+ * l'utilisateur perdrait sa saisie en cours »).
  *
- * Deux mécanismes cumulés, parce qu'aucun des deux seul ne s'est montré
- * fiable en pratique sur une PWA iOS installée sur l'écran d'accueil :
+ * Le nouveau worker reste EN ATTENTE ; il n'est activé (SKIP_WAITING) que
+ * sur appui explicite du bouton « Actualiser » du bandeau — voir
+ * `appliquerMiseAJour`. `registerType: 'prompt'` dans `vite.config.ts` est
+ * ce qui empêche le service worker de s'auto-activer : `autoUpdate`
+ * générerait un `self.skipWaiting()` inconditionnel, sans jamais laisser
+ * l'occasion de demander.
  *
- * 1. Le cycle normal du service worker (`registration.update()` +
- *    `onNeedRefresh`) : correct sur le papier, mais iOS ne relance pas
- *    toujours le contrôle d'octets du fichier `sw.js` de façon fiable en
- *    arrière-plan — l'app peut rester des jours sur une ancienne version
- *    sans qu'aucune erreur ne le signale.
+ * Deux détecteurs, un seul signal (le bandeau) :
  *
- * 2. Un contrôle direct par le réseau, indépendant du service worker : on
- *    récupère `version.json` (généré à chaque build, jamais précaché — voir
- *    `vite.config.ts`) et on compare son SHA à `__APP_VERSION__`, celui
- *    déjà chargé. S'ils diffèrent, un nouveau déploiement existe — on
- *    recharge la page directement, sans passer par la mécanique (parfois
- *    bloquée) du service worker. Interroger `/index.html` à la place
- *    semblait plus simple, mais c'était un piège : cette URL EST précachée,
- *    donc le service worker déjà installé y répondait depuis SON PROPRE
- *    cache — la vérification comparait alors l'ancienne version à
- *    elle-même, sans jamais rien détecter.
+ * 1. `onNeedRefresh`, fourni par `registerSW` : se déclenche quand le
+ *    cycle normal du service worker trouve un nouveau worker et le met en
+ *    attente.
+ * 2. Un contrôle réseau direct sur `version.json` (jamais précaché — voir
+ *    `vite.config.ts`), en secours si le cycle du service worker traîne.
  *
- * Les deux tournent à l'ouverture et à chaque retour au premier plan.
+ * `registration.update()` est forcé à l'ouverture ET à chaque retour au
+ * premier plan (`visibilitychange`) : une PWA installée n'est jamais
+ * rechargée, seulement mise en arrière-plan puis reprise — sans ce
+ * forçage, aucune mise à jour ne serait jamais détectée sur mobile.
+ *
+ * Rien n'est signalé à la toute première installation
+ * (`navigator.serviceWorker.controller` encore vide : il n'y a rien à
+ * « mettre à jour », seulement une première mise en cache) ni deux fois
+ * pour la même mise à jour.
  */
+
+const EVENEMENT_MISE_A_JOUR = 'pwa:mise-a-jour-disponible';
+
+let dejaSignale = false;
+let dejaRecharge = false;
+let declencherSkipWaiting: ((reload?: boolean) => Promise<void>) | null = null;
+let registrationActuelle: ServiceWorkerRegistration | null = null;
+
 export function installerMiseAJourPwa(): void {
-  const recharger = registerSW({
+  const signaler = () => {
+    if (dejaSignale) return;
+    if (!navigator.serviceWorker?.controller) return;
+    dejaSignale = true;
+    window.dispatchEvent(new Event(EVENEMENT_MISE_A_JOUR));
+  };
+
+  if ('serviceWorker' in navigator) {
+    // Garde anti-boucle : un seul rechargement, déclenché UNIQUEMENT une
+    // fois que le nouveau worker a réellement pris le contrôle (jamais à
+    // l'appui du bouton lui-même, qui ne fait qu'activer le worker).
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (dejaRecharge) return;
+      dejaRecharge = true;
+      window.location.reload();
+    });
+  }
+
+  declencherSkipWaiting = registerSW({
     immediate: true,
     onRegisteredSW(_url, registration) {
       if (!registration) return;
+      registrationActuelle = registration;
       void registration.update();
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') void registration.update();
       });
     },
     onNeedRefresh() {
-      void recharger(true);
+      signaler();
     },
   });
 
-  void verifierVersionEnLigne();
+  void verifierVersionEnLigne(signaler);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void verifierVersionEnLigne();
+    if (document.visibilityState === 'visible') void verifierVersionEnLigne(signaler);
   });
 }
 
-async function verifierVersionEnLigne(): Promise<void> {
+/** S'abonne à la disponibilité d'une mise à jour. Renvoie la fonction de désabonnement. */
+export function ecouterMiseAJourDisponible(gestionnaire: () => void): () => void {
+  window.addEventListener(EVENEMENT_MISE_A_JOUR, gestionnaire);
+  return () => window.removeEventListener(EVENEMENT_MISE_A_JOUR, gestionnaire);
+}
+
+/** Appelé UNIQUEMENT par l'appui explicite sur « Actualiser » du bandeau. */
+export function appliquerMiseAJour(): void {
+  void registrationActuelle?.update();
+  void declencherSkipWaiting?.(true);
+}
+
+async function verifierVersionEnLigne(signaler: () => void): Promise<void> {
   try {
     const reponse = await fetch('/version.json', { cache: 'no-store' });
     if (!reponse.ok) return;
@@ -55,9 +100,9 @@ async function verifierVersionEnLigne(): Promise<void> {
       ? String((distant as { version: unknown }).version)
       : null;
     // Une vérification manquée (hors ligne, erreur réseau, réponse mal
-    // formée) n'est jamais traitée comme une mise à jour : on ne recharge
+    // formée) n'est jamais traitée comme une mise à jour : on ne signale
     // que sur une différence positivement constatée.
-    if (version && version !== __APP_VERSION__) window.location.reload();
+    if (version && version !== __APP_VERSION__) signaler();
   } catch {
     // Retentera au prochain passage au premier plan.
   }

@@ -311,6 +311,18 @@ body {
   font-size: 15px; font-weight: 600; text-align: left;
 }
 
+/* Bandeau de mise à jour PWA : jamais d'action automatique, seulement une
+   invite — voir src/pwa.ts. Position fixe pour rester visible même si
+   l'utilisateur a déjà défilé la page. */
+.bandeau-maj {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; background: var(--surface-haute);
+  border-bottom: 1px solid var(--bordure);
+  font-size: 14px; font-weight: 600;
+}
+.bandeau-maj .bouton { min-height: 36px; margin-top: 0; padding: 6px 14px; width: auto; flex-shrink: 0; }
+
 /* --- Indicateurs clés --------------------------------------------- */
 .kpi-grille { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .kpi {
