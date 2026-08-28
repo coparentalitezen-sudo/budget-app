@@ -186,6 +186,27 @@ body {
 }
 .categorie-pied { font-size: 12px; color: var(--texte-doux); }
 
+.navigateur-mois {
+  display: flex; align-items: center; gap: 10px; margin: 4px 0 10px;
+}
+.navigateur-fleche {
+  background: var(--surface); border: 1px solid var(--bordure); color: var(--texte);
+  border-radius: 8px; width: 34px; height: 34px; font-size: 18px; line-height: 1;
+}
+.navigateur-fleche:disabled { opacity: 0.35; }
+.navigateur-libelle { font-weight: 600; flex: 1; text-align: center; }
+.navigateur-retour { font-size: 12px; }
+
+.comparaison-ligne { padding: 10px 0; }
+.comparaison-ligne + .comparaison-ligne { border-top: 1px solid var(--bordure); }
+.comparaison-tete { display: flex; justify-content: space-between; font-size: 14px; gap: 12px; }
+.comparaison-nom { font-weight: 600; }
+.comparaison-delta { font-variant-numeric: tabular-nums; }
+.comparaison-pied {
+  display: flex; justify-content: space-between; font-size: 12px;
+  color: var(--texte-doux); margin-top: 4px; gap: 12px;
+}
+
 .scenario { padding: 10px 0; border-bottom: 1px solid var(--bordure); }
 .scenario-tete { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; }
 .scenario-chiffres {
