@@ -1,5 +1,7 @@
 import { execSync } from 'node:child_process';
-import { defineConfig } from 'vite';
+import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { app } from './src/config/app.config.ts';
@@ -22,6 +24,28 @@ function shaCourt(): string {
 const APP_VERSION = shaCourt();
 const BUILD_TIME = new Date().toISOString();
 
+/**
+ * `version.json`, généré à chaque build, JAMAIS précaché par le service
+ * worker (voir `workbox.globPatterns` ci-dessous — il ne cible que
+ * js/css/html/png/svg/woff2, pas json). `src/pwa.ts` le récupère par un
+ * `fetch` classique pour savoir si un nouveau déploiement existe : un
+ * fichier qui échapperait au précache est indispensable, sinon la requête
+ * est interceptée par le SW déjà installé et répondue depuis SON PROPRE
+ * cache — comparant alors l'ancienne version à elle-même.
+ */
+function ecrireVersionJson(): Plugin {
+  return {
+    name: 'ecrire-version-json',
+    apply: 'build',
+    writeBundle(options) {
+      writeFileSync(
+        resolve(options.dir ?? 'dist', 'version.json'),
+        JSON.stringify({ version: APP_VERSION }),
+      );
+    },
+  };
+}
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
@@ -32,6 +56,7 @@ export default defineConfig({
   // trouvent tous de la même façon, y compris pour les tests.
   plugins: [
     react(),
+    ecrireVersionJson(),
     VitePWA({
       registerType: 'autoUpdate',
       // Enregistrement manuel (voir main.tsx) : le script auto-injecté par

@@ -13,11 +13,15 @@ import { registerSW } from 'virtual:pwa-register';
  *    sans qu'aucune erreur ne le signale.
  *
  * 2. Un contrôle direct par le réseau, indépendant du service worker : on
- *    récupère `index.html` sans cache et on compare le nom du script
- *    JavaScript qu'il référence à celui réellement chargé. S'ils diffèrent,
- *    un nouveau déploiement existe — on recharge la page directement,
- *    sans passer par la mécanique (parfois bloquée) du service worker.
- *    C'est un simple `fetch`, donc nettement plus prévisible.
+ *    récupère `version.json` (généré à chaque build, jamais précaché — voir
+ *    `vite.config.ts`) et on compare son SHA à `__APP_VERSION__`, celui
+ *    déjà chargé. S'ils diffèrent, un nouveau déploiement existe — on
+ *    recharge la page directement, sans passer par la mécanique (parfois
+ *    bloquée) du service worker. Interroger `/index.html` à la place
+ *    semblait plus simple, mais c'était un piège : cette URL EST précachée,
+ *    donc le service worker déjà installé y répondait depuis SON PROPRE
+ *    cache — la vérification comparait alors l'ancienne version à
+ *    elle-même, sans jamais rien détecter.
  *
  * Les deux tournent à l'ouverture et à chaque retour au premier plan.
  */
@@ -43,20 +47,17 @@ export function installerMiseAJourPwa(): void {
 }
 
 async function verifierVersionEnLigne(): Promise<void> {
-  const actuel = document
-    .querySelector<HTMLScriptElement>('script[type="module"][src*="/assets/index-"]')
-    ?.getAttribute('src');
-  if (!actuel) return;
-
   try {
-    const reponse = await fetch('/', { cache: 'no-store' });
+    const reponse = await fetch('/version.json', { cache: 'no-store' });
     if (!reponse.ok) return;
-    const html = await reponse.text();
-    const distant = /\/assets\/index-[\w-]+\.js/.exec(html)?.[0];
-    // Une vérification manquée (hors ligne, erreur réseau) n'est jamais
-    // traitée comme une mise à jour : on ne recharge que sur une différence
-    // positivement constatée.
-    if (distant && distant !== actuel) window.location.reload();
+    const distant: unknown = await reponse.json();
+    const version = typeof distant === 'object' && distant !== null && 'version' in distant
+      ? String((distant as { version: unknown }).version)
+      : null;
+    // Une vérification manquée (hors ligne, erreur réseau, réponse mal
+    // formée) n'est jamais traitée comme une mise à jour : on ne recharge
+    // que sur une différence positivement constatée.
+    if (version && version !== __APP_VERSION__) window.location.reload();
   } catch {
     // Retentera au prochain passage au premier plan.
   }
