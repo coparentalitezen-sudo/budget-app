@@ -3,6 +3,11 @@
    de build supplémentaire, et un contrôle exact des zones tactiles. */
 
 :root {
+  /* Sans ça, Safari suppose un thème CLAIR pour le rendu natif des
+     contrôles de formulaire (menu déroulant, sélecteur de date) — le
+     texte d'un <select> peut alors s'afficher sombre sur fond sombre,
+     donc invisible, même quand `color` est déjà fixé en CSS. */
+  color-scheme: dark;
   --fond: #0b0d12;
   --surface: #161a22;
   --surface-haute: #1f2530;
@@ -20,6 +25,11 @@
 }
 
 * { box-sizing: border-box; }
+
+/* Les contrôles de formulaire n'héritent pas la police/couleur de la page
+   par défaut (police système imposée par le navigateur) — un oubli
+   fréquent qui aggrave le même problème que `color-scheme` ci-dessus. */
+button, input, select, textarea { font: inherit; color: inherit; }
 
 html, body, #root { height: 100%; margin: 0; }
 
