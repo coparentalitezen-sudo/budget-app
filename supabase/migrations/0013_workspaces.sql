@@ -174,3 +174,14 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function app.handle_new_user();
+
+-- ---------------------------------------------------------------------
+-- `0007_rls.sql` révoque tout accès anonyme, mais seulement sur les
+-- tables qui existaient à ce moment-là — une table créée après en hérite
+-- des privilèges par défaut de Supabase (accordés à `anon` comme à
+-- `authenticated`). RLS bloque déjà `anon` ici (aucune policy ne le
+-- nomme), mais la même défense en profondeur que le reste du schéma
+-- s'applique : ne pas laisser un GRANT ouvert dont seule la RLS empêche
+-- l'usage.
+revoke all on public.workspaces from anon;
+revoke all on public.workspace_members from anon;
