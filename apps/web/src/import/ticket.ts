@@ -21,6 +21,13 @@ export interface TicketLu {
   date: DateISO | null;
 }
 
+// Le moyen de paiement n'apparaît qu'UNE fois sur un ticket, toujours pour
+// le montant réellement réglé — priorité sur les lignes « Total », dont un
+// ticket avec remises successives (ex. « 2e article à -50 % ») en imprime
+// PLUSIEURS, une après chaque remise appliquée.
+const MOTS_CLES_PAIEMENT = [
+  'CARTE BANCAIRE', 'CARTE BLEUE', 'ESPECES', 'ESPÈCES', 'CHEQUE', 'CHÈQUE',
+];
 const MOTS_CLES_TOTAL = [
   'NET A PAYER', 'NET À PAYER', 'A PAYER', 'À PAYER', 'TOTAL TTC', 'TOTAL', 'MONTANT',
 ];
@@ -51,6 +58,24 @@ function dateDeLaLigne(ligne: string): DateISO | null {
   return null;
 }
 
+/**
+ * Montant de la DERNIÈRE ligne correspondant à l'un des mots-clés — jamais
+ * la première : un ticket imprime parfois plusieurs lignes « Total »
+ * successives (une par remise appliquée), et seule la dernière est
+ * définitive. `null` si aucune ligne correspondante ne porte de montant.
+ */
+function dernierMontantParMotCle(lignes: string[], motsCles: string[]): Cents | null {
+  let trouve: Cents | null = null;
+  for (const ligne of lignes) {
+    const majuscules = ligne.toUpperCase();
+    if (motsCles.some((mot) => majuscules.includes(mot))) {
+      const candidats = montantsDeLaLigne(ligne);
+      if (candidats.length > 0) trouve = Math.max(...candidats);
+    }
+  }
+  return trouve;
+}
+
 export async function lireTicket(moteur: MoteurOcr, image: Blob): Promise<TicketLu> {
   const texte = await moteur.extraireTexte(image);
   const lignes = texte
@@ -58,22 +83,18 @@ export async function lireTicket(moteur: MoteurOcr, image: Blob): Promise<Ticket
     .map((l) => l.trim())
     .filter((l) => l !== '');
 
-  // Montant : la ligne portant un mot-clé de total, sinon le plus gros
-  // montant du ticket (le total dépasse presque toujours chaque article
-  // pris séparément).
-  let montant: Cents | null = null;
-  for (const ligne of lignes) {
-    if (MOTS_CLES_TOTAL.some((mot) => ligne.toUpperCase().includes(mot))) {
-      const candidats = montantsDeLaLigne(ligne);
-      if (candidats.length > 0) {
-        montant = Math.max(...candidats);
-        break;
-      }
-    }
-  }
+  // 1. Le moyen de paiement, s'il est lisible : LE montant réellement réglé.
+  // 2. À défaut, la DERNIÈRE ligne « Total »/« Net à payer » — jamais la
+  //    première, pour ne pas confondre un total intermédiaire (avant une
+  //    remise) avec le total final.
+  // 3. En dernier repli, le DERNIER montant imprimé sur le ticket — pas le
+  //    plus gros : une suite de totaux décroissants (remises successives)
+  //    rend le total final souvent PLUS PETIT que ceux qui le précèdent.
+  let montant = dernierMontantParMotCle(lignes, MOTS_CLES_PAIEMENT);
+  if (montant === null) montant = dernierMontantParMotCle(lignes, MOTS_CLES_TOTAL);
   if (montant === null) {
     const tous = lignes.flatMap(montantsDeLaLigne);
-    if (tous.length > 0) montant = Math.max(...tous);
+    if (tous.length > 0) montant = tous[tous.length - 1];
   }
 
   // Date : la première trouvée — un ticket n'en porte quasiment jamais deux.

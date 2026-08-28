@@ -34,10 +34,41 @@ describe('lireTicket', () => {
     assert.equal(r.montant, eur(8.00));
   });
 
-  test('sans mot-clé, retient le plus gros montant du ticket', async () => {
-    const texte = ['ARTICLE 1        5,00', 'ARTICLE 2        3,50', '8,50'].join('\n');
+  test('sans mot-clé, retient le DERNIER montant du ticket, pas le plus gros', async () => {
+    // Une suite de totaux décroissants (remises successives) rend le total
+    // final souvent plus petit que ceux qui le précèdent — voir le test
+    // « plusieurs lignes Total » ci-dessous pour le même principe avec le
+    // mot-clé « TOTAL » présent.
+    const texte = ['ARTICLE 1        5,00', 'ARTICLE 2        3,50', '8,50', '6,00'].join('\n');
     const r = await lireTicket(moteur(texte), new Blob());
-    assert.equal(r.montant, eur(8.50));
+    assert.equal(r.montant, eur(6.00));
+  });
+
+  test('plusieurs lignes « Total » successives (remises appliquées une à une) : la DERNIÈRE l’emporte', async () => {
+    // Cas réel : DistriCenter imprime un total après chaque remise
+    // « 2e article à -50 % » — trois lignes « Total » décroissantes, seule
+    // la dernière (163,90 €) est le montant réellement dû.
+    const texte = [
+      'a Total = 181,90 €',
+      'a 2e Jeans à -50% = -9,00 €',
+      'Total = 172,90 €',
+      'a 2e Jeans à -50% = -9,00 €',
+      'Total = 163,90 €',
+    ].join('\n');
+    const r = await lireTicket(moteur(texte), new Blob());
+    assert.equal(r.montant, eur(163.90));
+  });
+
+  test('une ligne de moyen de paiement (Carte Bancaire) prime sur les lignes « Total »', async () => {
+    const texte = [
+      'a Total = 181,90 €',
+      'Total = 172,90 €',
+      'Total = 163,90 €',
+      'Carte Bancaire       163.90 €',
+      'Montant H.T.         136.57 €',
+    ].join('\n');
+    const r = await lireTicket(moteur(texte), new Blob());
+    assert.equal(r.montant, eur(163.90));
   });
 
   test('un code-barres ou un numéro sans virgule n’est jamais pris pour un montant', async () => {
