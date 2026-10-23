@@ -397,3 +397,58 @@ describe('Extraction du solde réel (départ / clôture), jamais confondu avec u
     assert.equal(s.cloture, null);
   });
 });
+
+describe('Opérations annulées : le sens d’origine est inversé (cas réel Hello bank)', () => {
+  const texte = [
+    'du 15 août 2026 au 15 septembre 2026',
+    '18.08\tPRLV SEPA RETOURNE PAYPAL EUROPE\t18.08\t5,99',
+    '19.08\tPRLV SEPA CSEE PF BNP PARIBAS\t19.08\t120,00',
+    '20.08\t*COMMISSIONS FRAIS DE REJET DE PRELEVEMENT\t20.08\t14,00',
+    '21.08\tVIR SEPA RECU /DE CSEC /MOTIF ANNULATION\t21.08\t470,03',
+    '22.08\tVIR SEPA RECU /DE CSEC BNPPARIBAS\t22.08\t470,03',
+  ].join('\n');
+
+  const ligne = (motif: RegExp) => {
+    const l = analyserRelevePdf(texte).lignes.find((x) => motif.test(x.libelle));
+    assert.ok(l, `ligne introuvable : ${motif}`);
+    return l;
+  };
+
+  test('prélèvement retourné : crédit', () => {
+    const l = ligne(/RETOURNE PAYPAL/);
+    assert.equal(l.montant, 599);
+    assert.equal(l.sens, 'credit');
+  });
+
+  test('prélèvement ordinaire : reste un débit', () => {
+    const l = ligne(/CSEE PF/);
+    assert.equal(l.montant, 12000);
+    assert.equal(l.sens, 'debit');
+  });
+
+  test('frais de rejet : restent un débit', () => {
+    const l = ligne(/FRAIS DE REJET/);
+    assert.equal(l.montant, 1400);
+    assert.equal(l.sens, 'debit');
+  });
+
+  test('virement reçu puis annulé : devient un débit', () => {
+    const l = ligne(/MOTIF ANNULATION/);
+    assert.equal(l.montant, 47003);
+    assert.equal(l.sens, 'debit');
+  });
+
+  test('virement reçu ordinaire : reste un crédit', () => {
+    const l = ligne(/CSEC BNPPARIBAS/);
+    assert.equal(l.montant, 47003);
+    assert.equal(l.sens, 'credit');
+  });
+});
+
+describe('« SOLDE AU JJ/MM/AAAA » écarté quel que soit le jour', () => {
+  for (const jour of ['1', '9', '10', '31']) {
+    test(`SOLDE AU ${jour}/10/2026`, () => {
+      assert.equal(estLigneAdministrative(`SOLDE AU ${jour}/10/2026`), true);
+    });
+  }
+});

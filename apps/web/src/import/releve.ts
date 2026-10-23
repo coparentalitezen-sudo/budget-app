@@ -170,7 +170,10 @@ const MOTIFS_ADMINISTRATIFS: RegExp[] = [
   /^d[ée]bit\s+cr[ée]dit\s*$/i,
   // Soldes non transactionnels
   /^(ancien|nouveau)\s+solde/i,
-  /\bsolde\s+(interm[ée]diaire|progressif|au\s+\d|cr[ée]diteur|d[ée]biteur|initial|final)\b/i,
+  // Le \b final ne vaut que pour les alternatives en toutes lettres : après
+  // « au \d » il tomberait entre deux chiffres (« SOLDE AU 31/10/2026 »).
+  /\bsolde\s+(interm[ée]diaire|progressif|cr[ée]diteur|d[ée]biteur|initial|final)\b/i,
+  /\bsolde\s+au\s+\d/i,
   MOTIF_TOTAL_OPERATIONS,
   // Texte commercial / administratif / juridique. Ancré en tout début de
   // ligne : « BNP PARIBAS » apparaît aussi comme émetteur dans de vraies
@@ -556,6 +559,10 @@ export function analyserRelevePdf(texte: string): ReleveAnalyse {
  * le type d'opération (achat carte, prélèvement, remboursement) sont le
  * seul signal fiable — vérifié mot pour mot sur un relevé réel.
  */
+const MOTIF_ANNULATION =
+  /\b(RETOUR(NEE?S?)?|REJET(EE?S?)?|ANNUL(ATION|EE?S?)|EXTOURNEE?S?|CONTREPASSATION)\b/;
+const MOTIF_FRAIS = /\b(FRAIS|COMMISSIONS?)\b/;
+
 function ajusterSensParMotsCles(lignes: LigneAnalysee[]): void {
   for (const l of lignes) {
     if (l.montant === null) continue;
@@ -564,6 +571,12 @@ function ajusterSensParMotsCles(lignes: LigneAnalysee[]): void {
       l.sens = 'credit';
     } else if (/\bEMIS\b/.test(t) || (t.includes('FACTURE') && t.includes('CARTE')) || /\bPRLV\b/.test(t)) {
       l.sens = 'debit';
+    }
+    // Une annulation (prélèvement retourné, virement annulé...) inverse le
+    // sens de l'opération d'origine. Les frais facturés à l'occasion du
+    // rejet restent, eux, un débit.
+    if (MOTIF_ANNULATION.test(t) && !MOTIF_FRAIS.test(t)) {
+      l.sens = l.sens === 'debit' ? 'credit' : 'debit';
     }
   }
 }
