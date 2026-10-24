@@ -62,6 +62,12 @@ export function Dashboard({
     ? soldeCompte.revenusAVenir - soldeCompte.chargesAVenir - soldeCompte.provisionsAVenir - soldeCompte.epargneAVenir
     : 0;
   const [detailSoldeOuvert, setDetailSoldeOuvert] = useState(false);
+  // Doublons probables détectés par le moteur, rattachés aux deux
+  // opérations de la paire pour être signalés sur chacune d'elles.
+  const jumellesDe = (id: string) =>
+    (soldeCompte?.doublonsProbables ?? []).flatMap((d) =>
+      d.operation.id === id ? [d.jumelle] : d.jumelle.id === id ? [d.operation] : [],
+    );
   // Échéances déjà échues ce mois-ci (ex. la CAF, un salaire) : une échéance
   // pointée et antérieure au relevé n'apparaît nulle part ailleurs dans le
   // détail — sans cette liste, elle donnerait l'impression trompeuse
@@ -168,6 +174,16 @@ export function Dashboard({
                 ? 'Aucune opération non pointée'
                 : `${soldeCompte.operationsNonPointees.length} opération(s) non pointée(s) · ${montantSigne(soldeCompte.ecartNonPointe)}`}
             </span>
+            {soldeCompte.doublonsProbables.length > 0 && (
+              <span className="solde-detail ton-negatif">
+                ⚠️ {soldeCompte.doublonsProbables.length} doublon(s) probable(s) à vérifier
+              </span>
+            )}
+            {soldeCompte.operationsAnterieuresAuReleve.length > 0 && (
+              <span className="solde-detail">
+                {soldeCompte.operationsAnterieuresAuReleve.length} opération(s) antérieure(s) au relevé, non comptée(s)
+              </span>
+            )}
             {netRecurrentAVenir !== 0 && (
               <span className="solde-detail">
                 {montantSigne(netRecurrentAVenir)} de récurrentes attendues d’ici fin de mois
@@ -221,6 +237,33 @@ export function Dashboard({
                     <span className={`transaction-montant ton-${l.contribution >= 0 ? 'positif' : 'neutre'}`}>
                       {montantSigne(l.contribution)}
                     </span>
+                  </div>
+                  <div className="transaction-meta">{dateCourte(l.transaction.date)}</div>
+                  {jumellesDe(l.transaction.id).map((j) => (
+                    <div key={j.id} className="transaction-meta ton-negatif">
+                      Doublon probable de « {j.commercant ?? j.description ?? 'Sans libellé'} » (
+                      {j.pointage === 'pointed' ? 'déjà pointée' : 'non pointée'})
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </>
+          )}
+
+          {soldeCompte.operationsAnterieuresAuReleve.length > 0 && (
+            <>
+              <p className="detail-solde-soustitre">Antérieures au relevé — non comptées</p>
+              <p className="note">
+                Datées d’avant le relevé du {dateCourte(soldeCompte.soldeReelDate!)} : le solde réel
+                les inclut déjà. À pointer, ou à corriger si la banque ne les a jamais passées.
+              </p>
+              {soldeCompte.operationsAnterieuresAuReleve.map((l) => (
+                <div key={l.transaction.id} className="transaction">
+                  <div className="transaction-principal">
+                    <span className="transaction-libelle">
+                      {l.transaction.commercant ?? l.transaction.description ?? 'Sans libellé'}
+                    </span>
+                    <span className="transaction-montant ton-neutre">{montantSigne(l.contribution)}</span>
                   </div>
                   <div className="transaction-meta">{dateCourte(l.transaction.date)}</div>
                 </div>

@@ -209,6 +209,78 @@ describe('Solde théorique (solde réel + opérations non pointées)', () => {
   });
 });
 
+describe('Solde théorique : opérations antérieures au relevé', () => {
+  test('une opération non pointée datée d’avant le relevé n’est pas comptée, mais listée', () => {
+    const transactions: Transaction[] = [
+      t({ type: 'revenu', montant: 2719, date: '2026-09-10', pointage: 'unpointed', commercant: 'Salaire' }),
+      t({ type: 'depense', montant: 40, date: '2026-09-20', pointage: 'unpointed', commercant: 'Carrefour' }),
+    ];
+    const r = calculerSoldeTheorique(transactions, compte({ soldeDate: '2026-09-15' }));
+    assert.equal(r.soldeTheorique, eur(1210));
+    assert.equal(r.operationsNonPointees.length, 1);
+    assert.equal(r.operationsAnterieuresAuReleve.length, 1);
+    assert.equal(r.operationsAnterieuresAuReleve[0].transaction.commercant, 'Salaire');
+  });
+
+  test('une opération datée du jour même du relevé reste comptée', () => {
+    const transactions: Transaction[] = [
+      t({ type: 'depense', montant: 40, date: '2026-09-15', pointage: 'unpointed' }),
+    ];
+    const r = calculerSoldeTheorique(transactions, compte({ soldeDate: '2026-09-15' }));
+    assert.equal(r.soldeTheorique, eur(1210));
+    assert.equal(r.operationsAnterieuresAuReleve.length, 0);
+  });
+
+  test('date du relevé inconnue : tout reste compté', () => {
+    const transactions: Transaction[] = [
+      t({ type: 'depense', montant: 40, date: '2020-01-01', pointage: 'unpointed' }),
+    ];
+    const r = calculerSoldeTheorique(transactions, compte({ soldeDate: null }));
+    assert.equal(r.soldeTheorique, eur(1210));
+  });
+});
+
+describe('Solde théorique : doublons probables signalés, jamais retirés', () => {
+  test('même date, même montant, libellé proche : signalé une seule fois, toujours compté', () => {
+    const transactions: Transaction[] = [
+      t({ type: 'depense', montant: 45.2, date: '2026-10-12', pointage: 'unpointed', commercant: 'Carrefour Market' }),
+      t({ type: 'depense', montant: 45.2, date: '2026-10-12', pointage: 'unpointed', commercant: 'CARREFOUR MARKET' }),
+    ];
+    const r = calculerSoldeTheorique(transactions, compte());
+    assert.equal(r.doublonsProbables.length, 1);
+    assert.equal(r.soldeTheorique, eur(1250 - 90.4));
+  });
+
+  test('une opération non pointée qui répète une opération déjà pointée est signalée', () => {
+    const pointee = t({ type: 'revenu', montant: 2719, date: '2026-10-01', pointage: 'pointed', description: 'VIR SEPA RECU SALAIRE GROUPE' });
+    const saisie = t({ type: 'revenu', montant: 2719, date: '2026-10-01', pointage: 'unpointed', commercant: 'Salaire' });
+    const r = calculerSoldeTheorique([pointee, saisie], compte());
+    assert.equal(r.doublonsProbables.length, 1);
+    assert.equal(r.doublonsProbables[0].operation.id, saisie.id);
+    assert.equal(r.doublonsProbables[0].jumelle.id, pointee.id);
+  });
+
+  test('montant, date ou libellé différents : aucun signalement', () => {
+    const transactions: Transaction[] = [
+      t({ type: 'depense', montant: 45.2, date: '2026-10-12', pointage: 'unpointed', commercant: 'Carrefour' }),
+      t({ type: 'depense', montant: 45.3, date: '2026-10-12', pointage: 'unpointed', commercant: 'Carrefour' }),
+      t({ type: 'depense', montant: 45.2, date: '2026-10-13', pointage: 'unpointed', commercant: 'Carrefour' }),
+      t({ type: 'depense', montant: 45.2, date: '2026-10-12', pointage: 'unpointed', commercant: 'Pharmacie' }),
+      t({ type: 'revenu', montant: 45.2, date: '2026-10-12', pointage: 'unpointed', commercant: 'Carrefour' }),
+    ];
+    const r = calculerSoldeTheorique(transactions, compte());
+    assert.equal(r.doublonsProbables.length, 0);
+  });
+
+  test('sans libellé, aucun doublon n’est présumé', () => {
+    const transactions: Transaction[] = [
+      t({ type: 'depense', montant: 10, date: '2026-10-12', pointage: 'unpointed' }),
+      t({ type: 'depense', montant: 10, date: '2026-10-12', pointage: 'unpointed' }),
+    ];
+    assert.equal(calculerSoldeTheorique(transactions, compte()).doublonsProbables.length, 0);
+  });
+});
+
 describe('Appariement automatique d’une opération importée', () => {
   const operation = (partiel: Partial<OperationImportee> = {}): OperationImportee => ({
     date: '2026-07-10',

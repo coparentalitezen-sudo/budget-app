@@ -127,6 +127,27 @@ export interface SoldeCompte {
   operationsNonPointees: LigneRapprochement[];
   /** Somme algébrique des `operationsNonPointees` — `soldeTheorique - soldeReel`. */
   ecartNonPointe: Cents;
+  /**
+   * Opérations non pointées datées d'AVANT le relevé : NON comptées. Le
+   * solde réel les inclut déjà (ou la banque ne les a jamais vues) — les
+   * ajouter les compterait deux fois. Listées pour être pointées ou
+   * corrigées, jamais perdues de vue.
+   */
+  operationsAnterieuresAuReleve: LigneRapprochement[];
+  /**
+   * Doublons probables parmi les `operationsNonPointees` : même date, même
+   * effet sur le compte, libellé proche d'une autre opération du compte.
+   * Seulement SIGNALÉS, toujours comptés : deux achats identiques le même
+   * jour peuvent être réels, seul l'utilisateur tranche.
+   */
+  doublonsProbables: DoublonProbable[];
+}
+
+export interface DoublonProbable {
+  /** L'opération non pointée comptée dans le solde théorique. */
+  operation: Transaction;
+  /** L'opération du compte (pointée ou non) qu'elle semble répéter. */
+  jumelle: Transaction;
 }
 
 /**
@@ -144,27 +165,84 @@ export function calculerSoldeTheorique(transactions: Transaction[], compte: Comp
       soldeTheorique: null,
       operationsNonPointees: [],
       ecartNonPointe: 0,
+      operationsAnterieuresAuReleve: [],
+      doublonsProbables: [],
     };
   }
 
-  const operationsNonPointees = transactions
-    .filter(
-      (t) =>
-        t.pointage === 'unpointed' &&
-        (t.compteId === compte.id || t.compteDestinationId === compte.id),
-    )
+  const duCompte = transactions.filter(
+    (t) => t.compteId === compte.id || t.compteDestinationId === compte.id,
+  );
+  const nonPointees = duCompte
+    .filter((t) => t.pointage === 'unpointed')
     .map((t) => ({ transaction: t, contribution: contributionCompte(t, compte.id) }))
     .sort((a, b) => (a.transaction.date < b.transaction.date ? -1 : 1));
+
+  // Strictement avant : une opération datée du jour même du relevé peut
+  // en être absente (arrêté en cours de journée), elle reste comptée.
+  const dateReleve = compte.soldeDate ?? null;
+  const estAnterieure = (l: LigneRapprochement) => dateReleve !== null && l.transaction.date < dateReleve;
+  const operationsNonPointees = nonPointees.filter((l) => !estAnterieure(l));
+  const operationsAnterieuresAuReleve = nonPointees.filter(estAnterieure);
 
   const ecartNonPointe = operationsNonPointees.reduce((s, l) => s + l.contribution, 0);
 
   return {
     soldeReel: compte.solde,
-    soldeReelDate: compte.soldeDate ?? null,
+    soldeReelDate: dateReleve,
     soldeTheorique: compte.solde + ecartNonPointe,
     operationsNonPointees,
     ecartNonPointe,
+    operationsAnterieuresAuReleve,
+    doublonsProbables: detecterDoublonsProbables(operationsNonPointees, duCompte, compte.id),
   };
+}
+
+/**
+ * Part des mots du libellé le plus court retrouvés dans l'autre : une
+ * saisie manuelle (« Salaire ») face au libellé bancaire complet
+ * (« VIR SEPA RECU SALAIRE GROUPE ») vaut 1, là où le coefficient de Dice
+ * la noierait sous les mots propres à la banque. Réservé aux doublons, où
+ * la date et le montant identiques font déjà l'essentiel du tri.
+ */
+function recouvrementLibelle(a: string, b: string): number {
+  const motsA = new Set(normaliserLibelle(a).split(' ').filter((m) => m.length >= 3));
+  const motsB = new Set(normaliserLibelle(b).split(' ').filter((m) => m.length >= 3));
+  if (motsA.size === 0 || motsB.size === 0) return 0;
+  let communs = 0;
+  for (const m of motsA) if (motsB.has(m)) communs++;
+  return communs / Math.min(motsA.size, motsB.size);
+}
+
+/** Recouvrement minimal de libellé pour présumer un doublon. */
+const SEUIL_DOUBLON = 0.5;
+
+/**
+ * Une opération comptée est un doublon probable d'une autre opération du
+ * même compte si elles tombent le même jour, ont exactement le même effet
+ * sur le compte et des libellés proches. Une paire de deux opérations
+ * comptées n'est signalée qu'une fois.
+ */
+function detecterDoublonsProbables(
+  comptees: LigneRapprochement[],
+  duCompte: Transaction[],
+  compteId: string,
+): DoublonProbable[] {
+  const doublons: DoublonProbable[] = [];
+  const dejaSignalees = new Set<string>();
+  for (const { transaction: op, contribution } of comptees) {
+    for (const autre of duCompte) {
+      if (autre.id === op.id || autre.date !== op.date) continue;
+      if (contributionCompte(autre, compteId) !== contribution) continue;
+      const cle = [op.id, autre.id].sort().join('|');
+      if (dejaSignalees.has(cle)) continue;
+      const score = recouvrementLibelle(op.commercant ?? op.description ?? '', autre.commercant ?? autre.description ?? '');
+      if (score < SEUIL_DOUBLON) continue;
+      dejaSignalees.add(cle);
+      doublons.push({ operation: op, jumelle: autre });
+    }
+  }
+  return doublons;
 }
 
 /* ------------------------------------------------------------------ */
