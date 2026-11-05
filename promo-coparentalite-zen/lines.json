@@ -1,0 +1,39 @@
+[
+ {
+  "id": "l1",
+  "text": "Deux maisons, un enfant… et mille questions.",
+  "voice": "fr-FR-DeniseNeural",
+  "rate": "-6%"
+ },
+ {
+  "id": "l2",
+  "text": "Avec Coparentalité Zen, tout est au même endroit.",
+  "voice": "fr-FR-DeniseNeural",
+  "rate": "-4%"
+ },
+ {
+  "id": "l3",
+  "text": "Un planning de garde clair : chacun sait où sont les enfants.",
+  "voice": "fr-FR-DeniseNeural",
+  "rate": "-2%"
+ },
+ {
+  "id": "l4",
+  "text": "Les dépenses partagées, avec le solde calculé automatiquement.",
+  "voice": "fr-FR-DeniseNeural",
+  "rate": "-2%",
+  "asr": "Les dépenses partagées avec le sol de calculer automatiquement."
+ },
+ {
+  "id": "l5",
+  "text": "Les vacances et les changements, sans dérégler votre rythme.",
+  "voice": "fr-FR-DeniseNeural",
+  "rate": "-2%"
+ },
+ {
+  "id": "l6",
+  "text": "Coparentalité Zen. Gratuit pour commencer.",
+  "voice": "fr-FR-DeniseNeural",
+  "rate": "-4%"
+ }
+]

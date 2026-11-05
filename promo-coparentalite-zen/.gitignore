@@ -1,0 +1,4 @@
+out/
+stills/
+music/*.wav
+voices/.cache/

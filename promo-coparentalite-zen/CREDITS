@@ -1,0 +1,11 @@
+Coparentalité Zen — promo (Mid-century Cartoon style)
+
+Logo: Coparentalité Zen official logo (user's own material), shown unaltered.
+Narration voice: Microsoft Edge neural TTS "fr-FR-DeniseNeural", via edge-tts (MIT-licensed client).
+  Check Microsoft's terms before commercial use; Kokoro "ff_siwis" (Apache-2.0, offline) is the fallback (see build.sh).
+Speech check: faster-whisper (MIT), Whisper "small" model (MIT).
+Music: original score (music/score.py). Samples (CC0): Karoryfer Samples / sfzinstruments (jazz bass),
+  Versilian Community Sample Library (vibraphone), VS Chamber Orchestra: Community Edition, Versilian Studios (flute).
+Sound effects: synthesised in code (numpy/scipy).
+Fonts (SIL Open Font License 1.1, fonts/OFL-*.txt): Oleo Script (Soytutype), Alfa Slab One (JM Solé), Jost (indestructible type*).
+Drawing engine: adapted from the Lemo-Opuscar library (MIT), Mid-century Cartoon style.
