@@ -3,8 +3,8 @@
    de build supplémentaire, et un contrôle exact des zones tactiles. */
 
 /* Thème « carnet » : crème et or, inspiré des carnets de comptes
-   (kakeibo). Clair par défaut, sombre selon le réglage du téléphone ou le
-   choix fait dans Réglages (attribut `data-theme` posé par `lib/theme.ts`).
+   (kakeibo). Clair par défaut ; sombre (brun chaud, jamais noir) seulement
+   si choisi dans Réglages, directement ou en suivant le téléphone (attribut `data-theme` posé par `lib/theme.ts`).
    `color-scheme` suit le thème : sans ça, Safari dessine les contrôles
    natifs (menu déroulant, sélecteur de date) dans le mauvais thème, et le
    texte d'un <select> peut devenir invisible. */
@@ -36,11 +36,11 @@
 
 :root[data-theme="sombre"] {
   color-scheme: dark;
-  --fond: #14120f;
-  --surface: #1f1c17;
-  --surface-haute: #2b2720;
-  --texte: #f3ede2;
-  --texte-doux: #a99f8e;
+  --fond: #2a2620;
+  --surface: #36312a;
+  --surface-haute: #443d34;
+  --texte: #f6f0e5;
+  --texte-doux: #bdb2a0;
   --marque: #d6b257;
   --sur-marque: #1c1606;
   --accent: #4cc38a;
@@ -48,14 +48,14 @@
   --violet: #a58ef0;
   --attention: #e7b34a;
   --critique: #ef7b66;
-  --inconnu: #8a8172;
-  --bordure: #353028;
-  --fond-positif: #17301f;
-  --fond-attention: #3a2f14;
-  --fond-critique: #3a1d17;
-  --bord-attention: #5c4a1f;
-  --ombre: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --voile: rgba(0, 0, 0, 0.65);
+  --inconnu: #9c9282;
+  --bordure: #4a4238;
+  --fond-positif: #2a4232;
+  --fond-attention: #4d3f1f;
+  --fond-critique: #4d2c24;
+  --bord-attention: #6b5626;
+  --ombre: 0 1px 2px rgba(0, 0, 0, 0.2), 0 6px 18px rgba(0, 0, 0, 0.12);
+  --voile: rgba(20, 15, 10, 0.55);
 }
 
 * { box-sizing: border-box; }

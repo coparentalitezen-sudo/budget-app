@@ -14,9 +14,9 @@ import { features } from '../config/features.config.ts';
 import { useTheme, type PreferenceTheme } from '../lib/theme.ts';
 
 const THEMES: { cle: PreferenceTheme; libelle: string }[] = [
-  { cle: 'auto', libelle: 'Comme le téléphone' },
   { cle: 'clair', libelle: 'Clair' },
   { cle: 'sombre', libelle: 'Sombre' },
+  { cle: 'auto', libelle: 'Comme le téléphone' },
 ];
 
 export function Parametres() {
