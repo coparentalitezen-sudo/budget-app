@@ -11,6 +11,13 @@ import { synchroniser, type ResultatSync } from '../db/sync.ts';
 import { supabaseConfigure } from '../lib/supabase.ts';
 import { exporterMesDonnees, supprimerMonCompte } from '../lib/conformite.ts';
 import { features } from '../config/features.config.ts';
+import { useTheme, type PreferenceTheme } from '../lib/theme.ts';
+
+const THEMES: { cle: PreferenceTheme; libelle: string }[] = [
+  { cle: 'clair', libelle: 'Clair' },
+  { cle: 'sombre', libelle: 'Sombre' },
+  { cle: 'auto', libelle: 'Comme le téléphone' },
+];
 
 export function Parametres() {
   const { config } = useConfiguration();
@@ -18,6 +25,7 @@ export function Parametres() {
   const [resultat, setResultat] = useState<ResultatSync | null>(null);
   const [enCours, setEnCours] = useState(false);
 
+  const [theme, setTheme] = useTheme();
   const inconnues = inventaireInconnues(config);
   const { email: courriel, deconnecter, modeLocal } = useSession();
 
@@ -72,6 +80,16 @@ export function Parametres() {
 
   return (
     <div className="ecran">
+      <Carte titre="Apparence">
+        <div className="bascule">
+          {THEMES.map((t) => (
+            <button key={t.cle} className={theme === t.cle ? 'actif' : ''} onClick={() => setTheme(t.cle)}>
+              {t.libelle}
+            </button>
+          ))}
+        </div>
+      </Carte>
+
       <Carte titre="Synchronisation">
         <Ligne libelle="Supabase" valeur={supabaseConfigure ? 'Configuré' : 'Non configuré'} />
         <Ligne libelle="Réseau" valeur={navigator.onLine ? 'En ligne' : 'Hors ligne'} />

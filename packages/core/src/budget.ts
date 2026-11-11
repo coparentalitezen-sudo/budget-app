@@ -288,6 +288,53 @@ export function synthetiserMois(
 }
 
 /* ------------------------------------------------------------------ */
+/* Calendrier du mois                                                  */
+/* ------------------------------------------------------------------ */
+
+export interface JourDepenses {
+  date: DateISO;
+  /** Dépenses variables nettes du jour, exactement comme `calculerRealise`. */
+  depensesVariables: Cents;
+  /** Catégories touchées ce jour-là, la plus forte d'abord. */
+  categories: { categorieId: string; montant: Cents }[];
+}
+
+/**
+ * Dépenses variables jour par jour, pour un calendrier du mois.
+ *
+ * Aucune règle nouvelle : chaque jour passe par `calculerRealise`, donc la
+ * somme des jours égale toujours `synthetiserMois(...).depensesVariables`.
+ * Seuls les jours ayant au moins une opération variable sont renvoyés.
+ */
+export function depensesVariablesParJour(
+  config: Configuration,
+  transactions: Transaction[],
+  p: Periode,
+): JourDepenses[] {
+  const parDate = new Map<DateISO, Transaction[]>();
+  for (const t of transactions) {
+    if (periodeDe(t.date) !== p) continue;
+    const liste = parDate.get(t.date) ?? [];
+    liste.push(t);
+    parDate.set(t.date, liste);
+  }
+
+  const jours: JourDepenses[] = [];
+  for (const [date, lignes] of parDate) {
+    const realise = calculerRealise(config, lignes, p);
+    if (realise.parCategorie.size === 0) continue;
+    jours.push({
+      date,
+      depensesVariables: realise.depensesVariables,
+      categories: [...realise.parCategorie]
+        .map(([categorieId, montant]) => ({ categorieId, montant }))
+        .sort((a, b) => b.montant - a.montant),
+    });
+  }
+  return jours.sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+/* ------------------------------------------------------------------ */
 /* Vue hebdomadaire                                                    */
 /* ------------------------------------------------------------------ */
 
