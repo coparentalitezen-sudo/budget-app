@@ -1,17 +1,21 @@
 import { useState } from 'react';
-import { synthetiserMois, synthetiserSemaine } from '@budget/core/src/budget.ts';
+import { depensesVariablesParJour, synthetiserMois, synthetiserSemaine } from '@budget/core/src/budget.ts';
 import { situationVirement } from '@budget/core/src/tresorerie.ts';
 import { projeterSoldeTheorique } from '@budget/core/src/projection.ts';
 import { echeancesDejaPassees } from '@budget/core/src/recurrence.ts';
 import { genererAlertes } from '@budget/core/src/alertes.ts';
-import { periodeDe, joursDansMois } from '@budget/core/src/periode.ts';
-import { Anneau, PALETTE_ANNEAU, type PartAnneau } from '../components/Anneau.tsx';
+import { periodeDe } from '@budget/core/src/periode.ts';
+import { Anneau, type PartAnneau } from '../components/Anneau.tsx';
 import {
-  Carte, Jauge, Ligne, Valeur, IconeBadge, JaugeSemiCirculaire,
+  AnneauRestant, BarreRepartition, Calendrier, FluxArgent, LigneEnveloppe, type NoeudFlux,
+} from '../components/Graphiques.tsx';
+import { styleCategorie } from '../lib/categories.ts';
+import {
+  Carte, Ligne, Valeur, IconeBadge, JaugeSemiCirculaire,
   COULEUR_REVENUS, COULEUR_DEPENSES, COULEUR_EPARGNE,
 } from '../components/ui.tsx';
 import {
-  aujourdhuiISO, dateCourte, moisPilule, montant, montantSigne, nomMois, pourcent,
+  aujourdhuiISO, dateCourte, moisPilule, montant, montantSigne, pourcent,
 } from '../lib/format.ts';
 import { useConfiguration, useTransactions } from '../state/useDonnees.ts';
 import { estARenseigner } from './Transactions.tsx';
@@ -90,6 +94,10 @@ export function Dashboard({
       nom: c.nom,
       montant: c.depense,
       part: totalDepense > 0 ? c.depense / totalDepense : 0,
+      couleur: styleCategorie(
+        config.categories.find((x) => x.id === c.categorieId)?.nom ?? c.nom,
+        c.categorieId,
+      ).couleur,
     }));
   const ratioBudgetVariable = mois.budgetVariable > 0 ? mois.depensesVariables / mois.budgetVariable : null;
 
@@ -101,17 +109,60 @@ export function Dashboard({
     part: l.part,
   }));
 
-  /* --- Enveloppes : jusqu'à 4, les plus consommées d'abord ------------ */
+  /* --- Couleur et icône stables par catégorie (anneau, calendrier, enveloppes, flux) --- */
+  const nomDe = (id: string | null) =>
+    config.categories.find((c) => c.id === id)?.nom ?? 'Non catégorisé';
+  const styleDe = (id: string) => styleCategorie(nomDe(id), id);
+
+  /* --- Enveloppes : les plus dépensées d'abord, 5 visibles puis « Tout voir » --- */
+  const [toutesEnveloppes, setToutesEnveloppes] = useState(false);
   const enveloppes = [...mois.categories]
     .filter((c) => c.prevu > 0)
-    .sort((a, b) => b.pourcentage - a.pourcentage)
-    .slice(0, 4);
+    .sort((a, b) => b.depense - a.depense || b.pourcentage - a.pourcentage);
+  const enveloppesVisibles = toutesEnveloppes ? enveloppes : enveloppes.slice(0, 5);
 
-  /* --- Top 3 dépenses --------------------------------------------- */
-  const topCategories = [...mois.categories]
-    .filter((c) => c.depense > 0)
-    .sort((a, b) => b.depense - a.depense)
-    .slice(0, 3);
+  /* --- Calendrier : dépenses variables jour par jour, issues du moteur --- */
+  const joursDepenses = depensesVariablesParJour(config, transactions, periode);
+
+  /* --- Où part l'argent : les postes de `mois`, sans aucun recalcul.
+   * La capacité d'épargne EST ce que laissent revenus − charges − provisions
+   * − enveloppes (`capaciteEpargne` dans le moteur) ; négative, elle n'est
+   * pas dessinée mais annoncée. --- */
+  const capacite = epargne.capaciteEpargneBudgetaire;
+  const groupesFlux: NoeudFlux[] = [
+    { cle: 'fixes', nom: 'Charges fixes', montant: mois.chargesFixes, couleur: '#9a7b52' },
+    { cle: 'provisions', nom: 'Provisions', montant: mois.provisions, couleur: '#5d7fa8' },
+    {
+      cle: 'enveloppes',
+      nom: 'Vie courante',
+      montant: mois.budgetVariable,
+      couleur: '#c9a23c',
+      enfants: [...mois.categories]
+        .filter((c) => c.prevu > 0)
+        .sort((a, b) => b.prevu - a.prevu)
+        .map((c) => ({ cle: c.categorieId, nom: c.nom, montant: c.prevu, couleur: styleDe(c.categorieId).couleur })),
+    },
+    { cle: 'epargne', nom: 'Épargne', montant: Math.max(0, capacite), couleur: '#8a6fd9' },
+  ];
+  const totalFlux = groupesFlux.reduce((s, g) => s + g.montant, 0);
+
+  /* --- Anneau du reste à dépenser : la part de l'enveloppe du mois
+   * consommée par chaque catégorie, dans sa couleur. Ce qui n'est rattaché à
+   * aucune enveloppe (opération non classée...) reste visible en gris. --- */
+  const segmentsRestant = mois.budgetVariable > 0
+    ? [
+        ...partsDepenses.map((p) => ({
+          cle: p.cle,
+          couleur: styleDe(p.cle).couleur,
+          ratio: p.montant / mois.budgetVariable,
+        })),
+        {
+          cle: '__autres__',
+          couleur: 'var(--inconnu)',
+          ratio: (totalDepense - partsDepenses.reduce((s, p) => s + p.montant, 0)) / mois.budgetVariable,
+        },
+      ]
+    : [];
 
   const alertesFortes = alertes.filter((a) => a.niveau !== 'info').slice(0, 3);
 
@@ -123,8 +174,6 @@ export function Dashboard({
    * remplir un anneau de progression avec une capacité théorique donnait
    * l'impression trompeuse qu'un montant avait déjà été épargné. -------- */
   const ratioEpargneReelle = Math.max(0, mois.progressionEpargne);
-
-  const ratioHero = mois.budgetVariable > 0 ? mois.depensesVariables / mois.budgetVariable : 0;
 
   return (
     <div className="ecran">
@@ -140,19 +189,22 @@ export function Dashboard({
 
       {/* 1. Carte principale — l'information numéro un */}
       <section className="carte carte-principale">
-        <div className="principale-tete">
-          <IconeBadge emoji="👛" couleur={COULEUR_REVENUS} />
-          <span className="principale-libelle">Reste à dépenser</span>
-        </div>
-        <Valeur texte={montant(mois.resteADepenser)} taille="geante" />
-        <p className="heros-appui">
-          {montant(semaine.disponibleCetteSemaine)} d’ici dimanche ·{' '}
-          {montant(semaine.allocationQuotidienne)}/jour
-        </p>
-        <Jauge ratio={ratioHero} />
+        <AnneauRestant
+          segments={segmentsRestant}
+          depasse={mois.resteADepenser < 0}
+          valeur={montant(mois.resteADepenser)}
+          libelle={mois.resteADepenser < 0 ? 'de dépassement' : `restant sur ${montant(mois.budgetVariable)}`}
+        />
         <div className="principale-pied">
-          <span>Période : 1 – {joursDansMois(periode)} {nomMois(periode)}</span>
-          <span>{semaine.joursRestantsMois} jours restants</span>
+          <span>
+            <strong>{montant(semaine.disponibleCetteSemaine)}</strong> d’ici dimanche
+          </span>
+          <span>
+            <strong>{montant(semaine.allocationQuotidienne)}</strong> par jour
+          </span>
+          <span>
+            <strong>{semaine.joursRestantsMois}</strong> jours restants
+          </span>
         </div>
       </section>
 
@@ -300,115 +352,113 @@ export function Dashboard({
         </Carte>
       )}
 
-      {/* 2. Deux anneaux côte à côte */}
-      <div className="colonnes colonnes-anneaux">
-        <Carte titre="Revenus" className="carte-anneau">
-          <p className="anneau-entete-total">{montant(mois.revenus.total)}</p>
-          <p className="anneau-entete-sous">
-            {mois.revenus.base === 'prevu' ? 'prévus' : 'perçus'}
+      {/* 2. Indicateurs du mois */}
+      <div className="kpi-grille">
+        <div className="kpi">
+          <IconeBadge emoji="💶" couleur={COULEUR_REVENUS} />
+          <span className="kpi-libelle">Revenus</span>
+          <span className="kpi-valeur">{montant(mois.revenus.total)}</span>
+          <span className="kpi-appui">{mois.revenus.base === 'prevu' ? 'prévus' : 'perçus'}</span>
+        </div>
+        <div className="kpi">
+          <IconeBadge emoji="🛍️" couleur={COULEUR_DEPENSES} />
+          <span className="kpi-libelle">Dépensé</span>
+          <span className="kpi-valeur">{montant(mois.depensesVariables)}</span>
+          <span className="kpi-appui">sur {montant(mois.budgetVariable)}</span>
+        </div>
+        <div className="kpi">
+          <IconeBadge emoji="🐷" couleur={COULEUR_EPARGNE} />
+          <span className="kpi-libelle">Épargne</span>
+          <span className={`kpi-valeur${capacite < 0 ? ' ton-negatif' : ''}`}>{montant(capacite)}</span>
+          <span className="kpi-appui">capacité</span>
+        </div>
+      </div>
+
+      {/* 3. Enveloppes */}
+      {enveloppes.length > 0 && (
+        <Carte
+          titre="Enveloppes du mois"
+          action={<button className="lien" onClick={aller('budget')}>Gérer</button>}
+        >
+          {enveloppesVisibles.map((c) => (
+            <LigneEnveloppe
+              key={c.categorieId}
+              nom={c.nom}
+              style={styleDe(c.categorieId)}
+              depense={c.depense}
+              prevu={c.prevu}
+              ratio={c.pourcentage}
+            />
+          ))}
+          {enveloppes.length > 5 && (
+            <button className="lien lien-detail" onClick={() => setToutesEnveloppes((v) => !v)}>
+              {toutesEnveloppes ? 'Réduire' : `Voir les ${enveloppes.length} enveloppes`} ›
+            </button>
+          )}
+        </Carte>
+      )}
+
+      {/* 4. Calendrier des dépenses */}
+      <Carte titre="Calendrier des dépenses">
+        <Calendrier
+          periode={periode}
+          aujourdhui={aujourdhui}
+          jours={joursDepenses}
+          transactions={transactions}
+          styleDe={styleDe}
+          nomDe={nomDe}
+        />
+        <p className="note">Touchez un jour pour voir ses opérations.</p>
+      </Carte>
+
+      {/* 5. Où part l'argent */}
+      <Carte titre="Où part votre argent">
+        <p className="anneau-entete-total">{montant(mois.revenusPrevus)}</p>
+        <p className="anneau-entete-sous">de revenus prévus ce mois-ci</p>
+        <BarreRepartition
+          parts={groupesFlux.map((g) => ({
+            cle: g.cle,
+            couleur: g.couleur,
+            ratio: totalFlux > 0 ? g.montant / totalFlux : 0,
+          }))}
+        />
+        <ul className="anneau-legende legende-flux">
+          {groupesFlux.filter((g) => g.montant > 0).map((g) => (
+            <li key={g.cle}>
+              <span className="pastille" style={{ background: g.couleur }} />
+              <span className="legende-nom">{g.nom}</span>
+              <span className="legende-part">{Math.round((g.montant / totalFlux) * 100)} %</span>
+              <span className="legende-montant">{montant(g.montant)}</span>
+            </li>
+          ))}
+        </ul>
+        <FluxArgent groupes={groupesFlux} />
+        {capacite < 0 && (
+          <p className="note note-attention">
+            Les postes prévus dépassent les revenus de {montant(-capacite)} : aucune épargne
+            n’est dégagée ce mois-ci.
           </p>
+        )}
+      </Carte>
+
+      {/* 6. Revenus et objectif d'épargne, côte à côte */}
+      <div className="colonnes colonnes-compactes">
+        <Carte titre="Revenus" className="carte-anneau">
           <Anneau
             compact
-            limiteLegende={4}
+            limiteLegende={3}
             parts={partsRevenus}
             total={mois.revenus.total}
-            centreValeur={mois.revenus.base === 'prevu' ? '100 %' : montant(mois.revenus.total)}
-            legendeCentre={mois.revenus.base === 'prevu' ? 'prévu' : 'perçu'}
+            centreValeur={montant(mois.revenus.total)}
+            legendeCentre={mois.revenus.base === 'prevu' ? 'prévus' : 'perçus'}
             videTexte="Aucun revenu configuré."
             note={
               mois.revenus.base === 'realise' && mois.revenus.comporteNonIdentifie
                 ? 'Une part n’a pas pu être rattachée à une source connue.'
                 : undefined
             }
-            lienDetail={{ texte: 'Voir le détail', onClick: aller('configurer') }}
+            lienDetail={{ texte: 'Détail', onClick: aller('configurer') }}
           />
-        </Carte>
-
-        <Carte titre="Dépenses" className="carte-anneau">
-          <p className="anneau-entete-total">{montant(totalDepense)}</p>
-          <p className="anneau-entete-sous">réalisées</p>
-          <Anneau
-            compact
-            limiteLegende={4}
-            parts={partsDepenses}
-            total={totalDepense}
-            centreValeur={ratioBudgetVariable === null ? montant(totalDepense) : pourcent(ratioBudgetVariable)}
-            legendeCentre="du budget"
-            videTexte="Aucune dépense ce mois-ci."
-            note={mois.budgetVariable > 0 ? `Enveloppes : ${montant(mois.budgetVariable)}` : undefined}
-            lienDetail={{ texte: 'Voir le détail', onClick: aller('budget') }}
-          />
-        </Carte>
-      </div>
-
-      {/* 3. KPI secondaires */}
-      <div className="kpi-grille">
-        <div className="kpi kpi-revenus">
-          <IconeBadge emoji="📈" couleur={COULEUR_REVENUS} />
-          <span className="kpi-libelle">Revenus</span>
-          <span className="kpi-valeur">{montant(mois.revenus.total)}</span>
-          <span className="kpi-appui">
-            {mois.revenus.base === 'prevu' ? 'prévus' : 'perçus'}
-          </span>
-        </div>
-        <div className="kpi kpi-depenses">
-          <IconeBadge emoji="📉" couleur={COULEUR_DEPENSES} />
-          <span className="kpi-libelle">Dépenses</span>
-          <span className="kpi-valeur">{montant(mois.depensesVariables)}</span>
-          <span className="kpi-appui">sur {montant(mois.budgetVariable)}</span>
-        </div>
-        <div className="kpi kpi-epargne">
-          <IconeBadge emoji="🐷" couleur={COULEUR_EPARGNE} />
-          <span className="kpi-libelle">Épargne</span>
-          <span className="kpi-valeur">{montant(epargne.capaciteEpargneBudgetaire)}</span>
-          <span className="kpi-appui">capacité</span>
-        </div>
-      </div>
-
-      {/* 4. Enveloppes */}
-      {enveloppes.length > 0 && (
-        <Carte
-          titre="Enveloppes"
-          action={<button className="lien" onClick={aller('budget')}>Gérer</button>}
-        >
-          {enveloppes.map((c, i) => (
-            <div key={c.categorieId} className="enveloppe-ligne">
-              <div className="enveloppe-tete">
-                <span
-                  className="pastille pastille-icone"
-                  style={{ background: `${PALETTE_ANNEAU[i % PALETTE_ANNEAU.length]}26` }}
-                >
-                  {iconePourCategorie(c.nom)}
-                </span>
-                <span className="enveloppe-nom">{c.nom}</span>
-                <span className={`enveloppe-montant${c.pourcentage > 1 ? ' ton-negatif' : ''}`}>
-                  {montant(c.depense)} / {montant(c.prevu)}
-                </span>
-                <span className="enveloppe-pourcent">{Math.round(c.pourcentage * 100)} %</span>
-              </div>
-              <Jauge ratio={c.pourcentage} />
-            </div>
-          ))}
-        </Carte>
-      )}
-
-      {/* 5 & 6. Top 3 dépenses et objectif épargne, côte à côte */}
-      <div className="colonnes colonnes-compactes">
-        <Carte titre="Top 3 dépenses">
-          {topCategories.length === 0 && <p className="note">Aucune dépense ce mois-ci.</p>}
-          {topCategories.map((c, i) => (
-            <div key={c.categorieId} className="top3-ligne">
-              <span className="pastille" style={{ background: PALETTE_ANNEAU[i % PALETTE_ANNEAU.length] }} />
-              <span className="top3-nom">{c.nom}</span>
-              <span className="top3-montant">{montant(c.depense)}</span>
-              <span className="top3-pourcent">{Math.round(c.pourcentage * 100)} %</span>
-            </div>
-          ))}
-          {mois.categories.filter((c) => c.depense > 0).length > 0 && (
-            <button className="lien lien-detail" onClick={aller('budget')}>
-              Voir toutes les catégories ›
-            </button>
-          )}
         </Carte>
 
         <Carte titre="Objectif épargne">
@@ -465,22 +515,4 @@ export function Dashboard({
       )}
     </div>
   );
-}
-
-/**
- * Icône purement décorative associée au nom d'une catégorie.
- * Aucune incidence financière : à défaut de correspondance, une icône
- * générique est utilisée. Ce n'est pas une classification métier — celle-ci
- * reste `Categorie.nature`, définie dans `packages/core`.
- */
-function iconePourCategorie(nom: string): string {
-  const n = nom.toLowerCase();
-  if (/logement|loyer|immo/.test(n)) return '🏠';
-  if (/aliment|course|super/.test(n)) return '🛒';
-  if (/transport|essence|carburant|voiture/.test(n)) return '🚗';
-  if (/loisir|sortie|resto|restaurant/.test(n)) return '🍽️';
-  if (/sant[ée]|pharma|médic/.test(n)) return '💊';
-  if (/abonnement|téléphon|internet|forfait/.test(n)) return '📱';
-  if (/vêtement|habill/.test(n)) return '👕';
-  return '🏷️';
 }

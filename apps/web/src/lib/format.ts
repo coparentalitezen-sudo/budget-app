@@ -62,3 +62,8 @@ export function montantSigne(valeur: Cents | null | undefined): string {
 export function aujourdhuiISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+/** Montant arrondi à l'euro, sans décimales, pour les étiquettes compactes (calendrier, flux). */
+export function montantArrondi(valeur: Cents): string {
+  return `${Math.round(valeur / 100).toLocaleString('fr-FR')} €`;
+}

@@ -5,6 +5,7 @@ import {
   budgetVariableTotal,
   capaciteEpargne,
   chargesFixesPrevues,
+  depensesVariablesParJour,
   dotationsProvisions,
   revenusPrevus,
   situationEpargne,
@@ -218,5 +219,34 @@ describe('Vue hebdomadaire', () => {
     assert.equal(h.disponibleCetteSemaine, eur(104.63)); // 565 restants * 5 / 27
     assert.equal(h.depensesDepuisLundi, eur(565));
     assert.ok(formatEUR(h.disponibleCetteSemaine).includes('104,63'));
+  });
+});
+
+describe('Calendrier : dépenses variables par jour', () => {
+  const t = (id: string, date: string, montant: number, categorieId: string | null, type: Transaction['type'] = 'depense'): Transaction => ({
+    id, date, montant: eur(montant), type, categorieId, compteId: 'cpt_courant',
+    source: 'manual', statut: 'validated', pointage: 'unpointed',
+  });
+  const transactions = [
+    t('a', '2026-10-03', 40, CATEGORIES.courses),
+    t('b', '2026-10-03', 12.5, CATEGORIES.restaurants),
+    t('c', '2026-10-05', 189.5, CATEGORIES.pretCuisine), // charge fixe : hors calendrier
+    t('d', '2026-10-09', 20, CATEGORIES.courses),
+    t('e', '2026-10-09', 5, CATEGORIES.courses, 'remboursement'),
+    t('f', '2026-11-01', 99, CATEGORIES.courses), // autre mois
+  ];
+
+  test('la somme des jours égale les dépenses variables du mois', () => {
+    const jours = depensesVariablesParJour(foyer2026, transactions, OCTOBRE);
+    const total = jours.reduce((s, j) => s + j.depensesVariables, 0);
+    assert.equal(total, synthetiserMois(foyer2026, transactions, OCTOBRE).depensesVariables);
+  });
+
+  test('jours triés, catégories triées, charges fixes et autres mois exclus', () => {
+    const jours = depensesVariablesParJour(foyer2026, transactions, OCTOBRE);
+    assert.deepEqual(jours.map((j) => j.date), ['2026-10-03', '2026-10-09']);
+    assert.equal(jours[0].depensesVariables, eur(52.5));
+    assert.equal(jours[0].categories[0].categorieId, CATEGORIES.courses);
+    assert.equal(jours[1].depensesVariables, eur(15));
   });
 });

@@ -8,6 +8,7 @@ import { categoriserLot } from '../import/regles.ts';
 import { Carte, Etiquette, Vide } from '../components/ui.tsx';
 import { OperationARenseigner } from '../components/ARenseigner.tsx';
 import { dateCourte, montant } from '../lib/format.ts';
+import { styleCategorie } from '../lib/categories.ts';
 import { useConfiguration, useTransactions } from '../state/useDonnees.ts';
 
 const TYPES: (TypeTransaction | 'tous')[] = [
@@ -353,6 +354,7 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
             return (
               <div key={t.id} className="transaction">
                 <div className="transaction-principal">
+                  <PastilleCategorie id={t.categorieId} nom={nomCategorie(t.categorieId)} />
                   <span className="transaction-libelle">
                     {t.commercant ?? t.description ?? nomCategorie(t.categorieId)}
                   </span>
@@ -431,5 +433,16 @@ export function Transactions({ vueInitiale }: { vueInitiale?: 'a_renseigner' } =
       </p>
       <p className="note">Période courante : {periodeDe(new Date().toISOString().slice(0, 10))}</p>
     </div>
+  );
+}
+
+/** Icône colorée de la catégorie ; neutre tant que l'opération n'est pas classée. */
+function PastilleCategorie({ id, nom }: { id: string | null; nom: string }) {
+  if (!id) return <span className="pastille-categorie pastille-petite pastille-neutre">?</span>;
+  const style = styleCategorie(nom, id);
+  return (
+    <span className="pastille-categorie pastille-petite" style={{ background: `${style.couleur}24`, color: style.couleur }}>
+      {style.icone}
+    </span>
   );
 }

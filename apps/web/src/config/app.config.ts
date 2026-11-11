@@ -22,7 +22,6 @@ export type CleOnglet =
 export interface EntreeNavigation {
   cle: CleOnglet;
   libelle: string;
-  icone: string;
 }
 
 export const app = {
@@ -35,15 +34,15 @@ export const app = {
   },
 
   marque: {
-    /** Reprises telles quelles de `styles.css` (`:root`) — jamais dupliquées avec une valeur différente. */
+    /** Reprises telles quelles de `styles.css` (`:root`, thème clair) — jamais dupliquées avec une valeur différente. */
     couleurs: {
-      fond: '#0b0d12',
-      accent: '#4ade80',
-      bleu: '#38bdf8',
-      violet: '#a78bfa',
+      fond: '#f6f1e7',
+      accent: '#2f9e6e',
+      bleu: '#4a83c9',
+      violet: '#8a6fd9',
     },
-    /** Couleur de chrome PWA (barre de statut, splash) — distincte du fond de l'interface. */
-    themeColor: '#0f1115',
+    /** Couleur de chrome PWA (barre de statut, splash) : le fond crème du thème clair. */
+    themeColor: '#f6f1e7',
   },
 
   pwa: {
@@ -59,11 +58,11 @@ export const app = {
   /** Barre de navigation basse (≤ 5 entrées) + sections repliées sous « Plus ». */
   navigation: {
     principale: [
-      { cle: 'accueil', libelle: 'Accueil', icone: '🏠' },
-      { cle: 'transactions', libelle: 'Opérations', icone: '📋' },
-      { cle: 'budget', libelle: 'Budget', icone: '📊' },
-      { cle: 'epargne', libelle: 'Épargne', icone: '🐷' },
-      { cle: 'plus', libelle: 'Plus', icone: '⋯' },
+      { cle: 'accueil', libelle: 'Accueil' },
+      { cle: 'transactions', libelle: 'Opérations' },
+      { cle: 'budget', libelle: 'Budget' },
+      { cle: 'epargne', libelle: 'Épargne' },
+      { cle: 'plus', libelle: 'Plus' },
     ] satisfies EntreeNavigation[],
     sousPlus: [
       'credits', 'provisions', 'import', 'rapprochement', 'configurer', 'parametres',

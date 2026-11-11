@@ -15,6 +15,7 @@ import { Justificatifs } from './screens/Justificatifs.tsx';
 import { features } from './config/features.config.ts';
 import { BandeauMiseAJour } from './components/BandeauMiseAJour.tsx';
 import { SaisieRapide } from './components/SaisieRapide.tsx';
+import { IconeOnglet } from './components/Icones.tsx';
 import { installerSyncAutomatique, synchroniser } from './db/sync.ts';
 import { receptionnerJustificatifs, televerserJustificatifs } from './db/syncJustificatifs.ts';
 import { genererOperationsRecurrentesEnAttente } from './db/repository.ts';
@@ -170,7 +171,7 @@ function Application() {
                 setOnglet(o.cle);
               }}
             >
-              <span className="navigation-icone">{o.icone}</span>
+              <span className="navigation-icone"><IconeOnglet cle={o.cle} /></span>
               <span className="navigation-libelle">{o.libelle}</span>
             </button>
           );

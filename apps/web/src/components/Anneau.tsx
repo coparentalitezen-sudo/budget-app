@@ -1,5 +1,6 @@
 import type { Cents } from '@budget/core/src/money.ts';
 import { montant } from '../lib/format.ts';
+import { PALETTE_CATEGORIES } from '../lib/categories.ts';
 
 /**
  * Graphique en anneau, en SVG pur.
@@ -20,12 +21,11 @@ export interface PartAnneau {
   montant: Cents;
   /** Fraction du total, entre 0 et 1, fournie par le moteur. */
   part: number;
+  /** Couleur imposée (ex. celle de la catégorie) ; sinon, la palette. */
+  couleur?: string;
 }
 
-export const PALETTE_ANNEAU = [
-  '#4ade80', '#38bdf8', '#a78bfa', '#fbbf24',
-  '#fb7185', '#2dd4bf', '#f472b6', '#94a3b8',
-];
+export const PALETTE_ANNEAU = PALETTE_CATEGORIES;
 
 const RAYON = 54;
 const CIRCONFERENCE = 2 * Math.PI * RAYON;
@@ -80,7 +80,7 @@ export function Anneau({
     const longueur = p.part * CIRCONFERENCE;
     const segment = {
       ...p,
-      couleur: PALETTE_ANNEAU[i % PALETTE_ANNEAU.length],
+      couleur: p.couleur ?? PALETTE_ANNEAU[i % PALETTE_ANNEAU.length],
       dash: `${longueur} ${CIRCONFERENCE - longueur}`,
       // Décalage négatif : les segments s'enchaînent dans le sens horaire.
       decalage: -offset,

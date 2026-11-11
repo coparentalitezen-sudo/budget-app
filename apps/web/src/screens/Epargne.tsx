@@ -2,7 +2,7 @@ import { projeterTousLesObjectifs, repartitionObjectif, repartitionDuMois } from
 import { cibleFondUrgence, depensesEssentielles } from '@budget/core/src/fondUrgence.ts';
 import { situationEpargne } from '@budget/core/src/budget.ts';
 import { periodeDe } from '@budget/core/src/periode.ts';
-import { Carte, Jauge, Ligne, Valeur } from '../components/ui.tsx';
+import { Carte, Ligne, Valeur } from '../components/ui.tsx';
 import { aujourdhuiISO, montant, pourcent } from '../lib/format.ts';
 import { useConfiguration } from '../state/useDonnees.ts';
 
@@ -50,22 +50,34 @@ export function Epargne() {
         </div>
       </Carte>
 
-      {objectifs.map((o) => (
-        <Carte key={o.objectifId} titre={o.nom}>
+      {objectifs.map((o, i) => (
+        <section key={o.objectifId} className={`carte-objectif objectif-teinte-${i % 3}`}>
+          <p className="objectif-nom">{o.nom}</p>
+          <p className="objectif-cible">{montant(o.objectifTotal)}</p>
+          <p className="objectif-date">
+            {o.dateAtteinte ? `Atteinte estimée : ${o.dateAtteinte}` : 'Date d’atteinte inconnue'}
+          </p>
           {o.progression !== null ? (
-            <Jauge ratio={o.progression} seuil={1} />
+            <>
+              <p className="objectif-pourcent">{pourcent(o.progression)}</p>
+              <div className="objectif-barre" role="progressbar" aria-valuenow={Math.round(o.progression * 100)}>
+                <span style={{ width: `${Math.min(100, Math.max(0, o.progression * 100))}%` }} />
+              </div>
+            </>
           ) : (
-            <p className="note">Solde inconnu : aucune progression ne peut être affichée.</p>
+            <p className="objectif-note">Solde inconnu : aucune progression ne peut être affichée. Renseignez-le dans Réglages.</p>
           )}
-          <Ligne libelle="Cible" valeur={montant(o.objectifTotal)} />
-          <Ligne libelle="Solde constitué" valeur={montant(o.montantActuel)} />
-          <Ligne libelle="Reste à constituer" valeur={montant(o.restantAConstituer)} />
-          <Ligne libelle="Progression" valeur={pourcent(o.progression)} />
-          <Ligne
-            libelle="Date d’atteinte estimée"
-            valeur={o.dateAtteinte ?? 'Inconnu'}
-          />
-        </Carte>
+          <div className="objectif-tuiles">
+            <div>
+              <span>Épargné</span>
+              <strong>{montant(o.montantActuel)}</strong>
+            </div>
+            <div>
+              <span>Restant</span>
+              <strong>{montant(o.restantAConstituer)}</strong>
+            </div>
+          </div>
+        </section>
       ))}
 
       <Carte titre="Calcul de la cible du fonds d’urgence">

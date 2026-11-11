@@ -4,7 +4,9 @@ import { synthetiserMois, synthetiserSemaine } from '@budget/core/src/budget.ts'
 import { categoriesDuMois, comparerLignes } from '@budget/core/src/comparaison.ts';
 import { ajouterMois, periodeDe } from '@budget/core/src/periode.ts';
 import type { Configuration, Transaction } from '@budget/core/src/types.ts';
-import { Carte, Jauge, Ligne, Valeur, Vide } from '../components/ui.tsx';
+import { Carte, Ligne, Valeur, Vide } from '../components/ui.tsx';
+import { LigneEnveloppe } from '../components/Graphiques.tsx';
+import { styleCategorie } from '../lib/categories.ts';
 import { aujourdhuiISO, montant, montantSigne, moisLong } from '../lib/format.ts';
 import { useConfiguration, useTransactions } from '../state/useDonnees.ts';
 
@@ -97,32 +99,27 @@ export function Budget() {
             />
           </Carte>
 
-          {mois.categories.map((c) => (
-            <Carte key={c.categorieId}>
-              <div className="categorie-tete">
-                <span>{c.nom}</span>
-                <span className={c.pourcentage > 1 ? 'ton-negatif' : ''}>
-                  {montant(c.depense)} / {montant(c.prevu)}
-                </span>
-              </div>
-              <Jauge ratio={c.pourcentage} />
-              <div className="categorie-pied">
-                <span>{Math.round(c.pourcentage * 100)} % consommés</span>
-                <span className={c.restant < 0 ? 'ton-negatif' : ''}>
-                  {c.restant < 0 ? 'Dépassement ' : 'Restant '}
-                  {montant(Math.abs(c.restant))}
-                </span>
-              </div>
-              {c.pourcentage >= 1 && (
-                <p className="note note-attention">
-                  {c.pourcentage > 1 ? 'Enveloppe dépassée.' : 'Enveloppe épuisée.'}
+          <Carte titre="Enveloppes">
+            {mois.categories.length === 0 && <Vide message="Aucune enveloppe configurée." />}
+            {mois.categories.map((c) => (
+              <div key={c.categorieId} className="enveloppe-bloc">
+                <LigneEnveloppe
+                  nom={c.nom}
+                  style={styleCategorie(c.nom, c.categorieId)}
+                  depense={c.depense}
+                  prevu={c.prevu}
+                  ratio={c.pourcentage}
+                />
+                <p className={`note note-enveloppe${c.pourcentage >= 1 ? ' note-attention' : ''}`}>
+                  {c.pourcentage > 1
+                    ? `Enveloppe dépassée de ${montant(-c.restant)}.`
+                    : c.pourcentage >= 1
+                      ? 'Enveloppe épuisée.'
+                      : `Restant ${montant(c.restant)}${c.pourcentage >= 0.8 ? ' · seuil de vigilance à 80 % atteint' : ''}.`}
                 </p>
-              )}
-              {c.pourcentage >= 0.8 && c.pourcentage < 1 && (
-                <p className="note">Seuil de vigilance à 80 % atteint.</p>
-              )}
-            </Carte>
-          ))}
+              </div>
+            ))}
+          </Carte>
         </>
       )}
 
